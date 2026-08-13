@@ -1,0 +1,12 @@
+{
+  "subject": "subj01",
+  "task_id": 1,
+  "task_name": "将奶酪切片",
+  "run": 1,
+  "scene": 0,
+  "paradigm": "1",
+  "neon_ip": "172.16.19.213",
+  "notes": "tasks 可无限追加；每次采集用 --task-id 只选一个任务",
+  "started_at": "2026-08-06_18-25-51",
+  "session_dir": null
+}
