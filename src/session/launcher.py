@@ -1,4 +1,12 @@
-"""Launcher — runs recorders in-process via threads, optionally with stim.
+"""Launcher — runs each recorder in its OWN PROCESS, optionally with stim.
+
+Threads would serialize CPU-bound work (PNG/mp4 encoding, numpy, serial
+parsing) on the GIL; a process per recorder gives real parallelism.
+
+Every recorder child first runs its ``_open()`` first-data gate and reports
+over a control queue.  Recording starts only when **all** children report
+ready; anything else (open failed / raised / timed out / died) aborts the
+launch with the specific reason — nothing is recorded.
 
 Usage::
 
@@ -7,10 +15,6 @@ Usage::
 
     # CLI: dummy test without stim
     python -m src.session.launcher --dummy --session-dir ./test --duration 10
-
-    # CLI: only specific modalities with stim
-    python -m src.session.launcher --session-dir ./sessions/run1 \\
-        --recorders emg hand_pose --with-stim
 
     # Code: custom setup
     from src.session.launcher import launch
@@ -22,9 +26,10 @@ Usage::
 """
 
 import argparse
+import multiprocessing as mp
+import queue
 import subprocess
 import sys
-import threading
 import time
 from pathlib import Path
 from typing import Sequence
@@ -33,8 +38,41 @@ from src.recorders.base import BaseRecorder
 
 SRC = Path(__file__).resolve().parents[1]
 
+# fork: children inherit the already-constructed recorder objects (they are
+# not picklable — loguru loggers, open handles — but fork needs no pickling).
+_CTX = mp.get_context("fork")
+
 
 # ---- core ---------------------------------------------------------------
+
+
+def _recorder_main(name: str, rec: BaseRecorder, ctrl_q, go_evt) -> None:
+    """Child process: open (first-data gate) -> report -> wait for go ->
+    record until stop_event/duration, then teardown + save."""
+    try:
+        ok = rec._open()
+    except Exception as exc:
+        ctrl_q.put(("ready", name, f"open ERROR — {type(exc).__name__}: {exc}"))
+        rec.logger.opt(exception=True).error(f"[{name}] open crashed")
+        return
+    if not ok:
+        ctrl_q.put(("ready", name,
+                    "open FAILED — " + (rec._open_error or "unknown reason")))
+        return
+    ctrl_q.put(("ready", name, ""))
+    if not go_evt.wait(timeout=600):  # parent aborted the launch
+        try:
+            rec._close()
+        except Exception:
+            pass
+        return
+    # One flow for every recorder: setup → loop → teardown (asyncio-style
+    # recorders override _record with their own event loop).
+    try:
+        rec._record()
+    except Exception as exc:
+        rec.logger.opt(exception=True).error(
+            f"[{name}] crashed: {type(exc).__name__}: {exc}")
 
 
 def launch(
@@ -43,12 +81,8 @@ def launch(
     stim_cmd: Sequence[str] | None = None,
     duration: float = 0.0,
 ) -> int:
-    """Run *recorders* in threads until stim ends, duration elapses, or Ctrl+C.
-
-    Every recorder is opened first (with a per-recorder timeout); recording
-    starts only when **all** of them return True from ``_open()``.  If any
-    open returns False, raises, or times out, the specific error is printed
-    and the launch aborts with a non-zero exit code — nothing is recorded.
+    """Run each *recorders* entry in its own process until stim ends,
+    duration elapses, or Ctrl+C.
 
     Args:
         recorders: pre-configured recorder instances (``_open`` not yet called)
@@ -60,65 +94,69 @@ def launch(
         print("[launcher] nothing to run.")
         return 0
 
-    threads: dict[str, threading.Thread] = {}
-    stop_event = threading.Event()
-    _closed: set[str] = set()
-
     print(f"[launcher] modalities: {list(recorders.keys())}")
 
-    # ---- open every recorder; ALL must return True before recording ----
-    opened: list[tuple[str, BaseRecorder]] = []
-
-    def _open_one(name: str, rec: BaseRecorder) -> tuple[bool, str]:
-        """Open one recorder under a watchdog timeout.
-
-        Returns ``(ok, reason)``; ``reason`` is the specific failure message
-        ('' when ok): ``_open()`` returned False, raised, or hung past
-        ``config.open_timeout``.
-        """
-        timeout = float(getattr(rec.config, "open_timeout", 30.0) or 30.0)
-        result: dict = {"done": False, "ok": False, "exc": None}
-
-        def _do_open():
-            try:
-                result["ok"] = bool(rec._open())
-            except Exception as exc:  # noqa: BLE001 — report, don't crash
-                result["exc"] = exc
-            finally:
-                result["done"] = True
-
-        print(f"[launcher] opening {name} ({type(rec).__name__}) ...")
-        t = threading.Thread(target=_do_open, name=f"open:{name}", daemon=True)
-        t.start()
-        t.join(timeout=timeout)
-
-        if not result["done"]:
-            return False, f"open TIMEOUT after {timeout:g}s"
-        if result["exc"] is not None:
-            exc = result["exc"]
-            return False, f"open ERROR — {type(exc).__name__}: {exc}"
-        if result["ok"]:
-            return True, ""
-        return False, "open FAILED — " + (
-            getattr(rec, "_open_error", "") or "unknown reason")
-
+    ctrl_q = _CTX.Queue()
+    go_evt = _CTX.Event()
+    procs: dict[str, mp.Process] = {}
     for name, rec in recorders.items():
-        ok, reason = _open_one(name, rec)
-        if ok:
-            print(f"[launcher] {name} ({type(rec).__name__}): open OK")
-            opened.append((name, rec))
-        else:
-            print(f"[launcher] {name} ({type(rec).__name__}): {reason}")
-            rec._log(f"[launcher] {name}: {reason}", echo=False)
-            print("[launcher] ERROR: not all recorders opened — "
-                  "aborting, nothing will be recorded.")
-            for op_name, op_rec in opened:
-                try:
-                    op_rec._close()
-                except Exception:
-                    pass
-            return 1
+        rec.stop_event = _CTX.Event()   # parent signals graceful stop
+        rec._hb_queue = ctrl_q          # heartbeats route to the parent
+        procs[name] = _CTX.Process(
+            target=_recorder_main, args=(name, rec, ctrl_q, go_evt),
+            name=f"rec:{name}", daemon=True)
+    all_procs = dict(procs)
 
+    # ---- open phase: all children run their first-data gate in parallel ----
+    for name, p in procs.items():
+        print(f"[launcher] opening {name} ({type(recorders[name]).__name__}) ...")
+        p.start()
+
+    t0 = time.time()
+    results: dict[str, str] = {}   # name -> "" (ready) or failure reason
+    while len(results) < len(procs):
+        # per-recorder open watchdog
+        for name, p in procs.items():
+            if name in results:
+                continue
+            timeout = float(getattr(recorders[name].config,
+                                    "open_timeout", 30.0) or 30.0)
+            if time.time() - t0 > timeout:
+                results[name] = f"open TIMEOUT after {timeout:g}s"
+        # children that died without reporting
+        for name, p in procs.items():
+            if name in results:
+                continue
+            if not p.is_alive():
+                results[name] = f"process exited early (code={p.exitcode})"
+        # control messages
+        try:
+            msg = ctrl_q.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if msg[0] == "ready":
+            _, name, reason = msg
+            if name in procs and name not in results:
+                results[name] = reason
+        # ("hb", ...) messages are ignored during the open phase
+
+    failed = [(n, r) for n, r in results.items() if r]
+    for n, reason in failed:
+        print(f"[launcher] {n} ({type(recorders[n]).__name__}): {reason}")
+        recorders[n]._log(f"[launcher] {n}: {reason}", echo=False)
+    if failed:
+        print("[launcher] ERROR: not all recorders opened — "
+              "aborting, nothing will be recorded.")
+        go_evt.set()  # release the ready children from their wait
+        for name, p in all_procs.items():
+            p.join(timeout=10.0)
+            if p.is_alive():
+                p.terminate()
+                p.join(timeout=5.0)
+        return 1
+
+    for name in recorders:
+        print(f"[launcher] {name}: open OK")
     print("[launcher] all recorders ready — starting.")
 
     # ---- start stim subprocess (if requested) ----
@@ -131,44 +169,14 @@ def launch(
             cwd=str(SRC.parent),  # project root
         )
 
-    def _stop_one(name: str, rec: BaseRecorder) -> None:
-        if name in _closed:
-            return
-        _closed.add(name)
-        try:
-            rec._close()
-        except Exception:
-            pass
-        try:
-            rec._save()
-        except Exception:
-            pass
+    go_evt.set()
 
-    # ---- poll worker per recorder ----
-    def _worker(name: str, rec: BaseRecorder) -> None:
-        t0 = time.time()
-        try:
-            while not stop_event.is_set():
-                rec._poll(time.time() - t0)
-                time.sleep(0.001)
-        except Exception as exc:
-            print(f"\n[launcher] {name} crashed: {type(exc).__name__}: {exc}")
-        finally:
-            _stop_one(name, rec)
-            if not stop_event.is_set():
-                stop_event.set()
-
-    for name, rec in recorders.items():
-        t = threading.Thread(target=_worker, args=(name, rec), daemon=True)
-        t.start()
-        threads[name] = t
-
-    # ---- main loop ----
+    # ---- recording phase: monitor children + stim + duration ----
     rc = 0
     t0 = time.time()
-
+    stats: dict[str, str] = {}
     try:
-        while threads:
+        while procs:
             elapsed = time.time() - t0
 
             # --- stop conditions ---
@@ -178,21 +186,33 @@ def launch(
 
             if stim_proc is not None and stim_proc.poll() is not None:
                 rc = stim_proc.returncode
-                print(f"\n[launcher] stim exited (code={rc}) — stopping recorders.")
+                print(f"\n[launcher] stim exited (code={rc}) — "
+                      f"stopping recorders.")
                 break
 
-            # --- thread health ---
-            for name, t in list(threads.items()):
-                if not t.is_alive():
-                    print(f"\n[launcher] {name} thread exited")
-                    del threads[name]
+            # --- child health ---
+            for name, p in list(procs.items()):
+                if not p.is_alive():
+                    print(f"\n[launcher] {name} process exited "
+                          f"(code={p.exitcode})")
+                    del procs[name]
+
+            # --- heartbeat aggregation ---
+            while True:
+                try:
+                    msg = ctrl_q.get_nowait()
+                except queue.Empty:
+                    break
+                if msg[0] == "hb":
+                    _, name, line = msg
+                    stats[name] = line
 
             # --- status line every 1 s ---
             if int(elapsed) > int(elapsed - 0.5):
                 parts = [f"t={elapsed:5.1f}s"]
-                for name, rec in recorders.items():
-                    extra = rec._heartbeat_stats(elapsed)
-                    parts.append(f"{name}:{extra}" if extra else name)
+                for name in recorders:
+                    parts.append(f"{name}:{stats[name]}" if name in stats
+                                 else name)
                 print("  ".join(parts).ljust(140))
 
             time.sleep(0.5)
@@ -200,9 +220,11 @@ def launch(
     except KeyboardInterrupt:
         print("\n[launcher] Ctrl+C — stopping ...")
     finally:
-        stop_event.set()
+        # Ask every child to stop gracefully (their _loop / signal tasks
+        # poll the stop_event), then hard-kill stragglers.
+        for name, rec in recorders.items():
+            rec.stop_event.set()
 
-        # Kill stim if still running
         if stim_proc is not None and stim_proc.poll() is None:
             stim_proc.terminate()
             try:
@@ -210,12 +232,15 @@ def launch(
             except subprocess.TimeoutExpired:
                 stim_proc.kill()
 
-        for name, t in threads.items():
-            t.join(timeout=2.0)
-        for name, rec in recorders.items():
-            _stop_one(name, rec)
+        for name, p in all_procs.items():
+            p.join(timeout=15.0)   # children need time to flush mp4/npz
+        for name, p in all_procs.items():
+            if p.is_alive():
+                print(f"[launcher] {name} did not stop — killing.")
+                p.terminate()
+                p.join(timeout=5.0)
 
-    print(f"[launcher] done.")
+    print("[launcher] done.")
     return rc
 
 

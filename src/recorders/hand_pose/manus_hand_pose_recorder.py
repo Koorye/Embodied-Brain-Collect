@@ -57,41 +57,60 @@ class ManusHandPoseRecorder(BaseHandPoseRecorder):
                 return False
             time.sleep(0.1)
 
-        # Wait up to 8 s for device detection (landscape arrives before devices,
-        # and gloves are discovered asynchronously one-by-one).
-        self._log("[hand_pose:manus] waiting for glove detection ...")
-        t0 = time.time()
-        first_seen = 0.0
-        while time.time() - t0 < 8:
-            prev_ids = set(self._glove_ids)
+        # Both gloves must be paired before recording starts — the recorder
+        # records a fixed two-hand layout and does not track devices that
+        # connect/disconnect later.
+        self._log("[hand_pose:manus] waiting for BOTH gloves (2/2) ...")
+        deadline = time.time() + float(self.config.open_timeout or 30.0)
+        last_count = -1
+        while len(self._glove_ids) < 2:
+            if time.time() > deadline:
+                self._open_error = (
+                    f"only {len(self._glove_ids)}/2 gloves found after "
+                    f"{self.config.open_timeout:g}s — pair both gloves in "
+                    "Manus Core and retry")
+                self._log(f"[hand_pose:manus] open failed — {self._open_error}")
+                return False
             self._refresh_gloves()
-            # Also check skeleton stream for glove IDs
             if self._pub.GetGloveIds():
                 self._refresh_gloves()
-            new_ids = set(self._glove_ids) - prev_ids
-            if new_ids and not first_seen:
-                first_seen = time.time()
-            # After first glove appears, keep waiting up to 3 s for more
-            if first_seen and time.time() - first_seen > 3:
-                break
-            time.sleep(0.2)
+            if len(self._glove_ids) != last_count:
+                last_count = len(self._glove_ids)
+                self._log(f"[hand_pose:manus] gloves detected: "
+                          f"{last_count}/2 (ids={self._glove_ids})")
+            time.sleep(0.5)
 
-        if not self._glove_ids:
-            self._log("[hand_pose:manus] WARNING: no gloves found after 8 s. "
-                      "Ensure gloves are paired and Manus Core is running.")
-            self._log("[hand_pose:manus] Will keep checking for gloves while recording ...")
-        else:
-            self._pub.LoadCalibrationFiles()
+        self._pub.LoadCalibrationFiles()
+        self._log(f"[hand_pose:manus] both gloves connected: "
+                  f"ids={self._glove_ids} — waiting for first glove data ...")
+
+        def _try_poll() -> bool:
+            self._poll(time.time())
+            return (bool(self._buf.get("ergo_timestamps"))
+                    or bool(self._buf.get("skeleton_timestamps")))
+
+        if not self._wait_first_sample(_try_poll, "glove data", timeout=10.0):
+            return False
+        # Gate samples used wall-clock ts; clear so the session timeline
+        # starts clean from the launcher's t0.
+        self._buf.clear()
+        self._arr_buf.clear()
+        self._log("[hand_pose:manus] first glove data received — ready")
         return True
 
     def _poll(self, ts) -> None:
         if self._pub is None:
             return
 
-        # Periodically refresh landscape to detect newly connected gloves
-        if ts - self._last_glove_check > 2.0:
-            self._last_glove_check = ts
-            self._refresh_gloves()
+        # One combined frame per poll tick: left hand fills 0-19, right fills
+        # 20-39.  Appending one frame per glove would interleave left/right
+        # rows (each zeroed on the other hand's half) and make per-channel
+        # time series sawtooth between value and zero.
+        # The glove list is fixed at open time (both gloves required).
+        ergo_flat = np.zeros(40, dtype=np.float32)
+        have_ergo = False
+        skel_parts: list[tuple[np.ndarray, np.ndarray]] = []
+        have_skel = False
 
         for gid in self._glove_ids:
             data = self._pub.GetGloveData(gid)
@@ -100,25 +119,34 @@ class ManusHandPoseRecorder(BaseHandPoseRecorder):
 
             # ---- ergonomics (finger joint angles) ----
             ergo = data.get("ergonomics")
-            if ergo is not None:
-                # Accumulate only when we see new data (check first value)
-                if ergo:
-                    self._acc("ergo_timestamps", ts)
-                    flat = np.zeros(40, dtype=np.float32)
-                    for entry in ergo:
-                        idx = _ERGO_INDEX.get(entry["type"], -1)
-                        if idx >= 0:
-                            flat[idx] = entry["value"]
-                    self._acc_arr("ergo_data", flat)
+            if ergo:
+                have_ergo = True
+                # entry["type"] is side-agnostic (e.g. "ThumbMCPSpread"),
+                # and the snapshot only holds this glove's own side — use
+                # the glove side to place left at 0-19, right at 20-39.
+                offset = _ERGO_SIDE_OFFSET.get(data.get("side", "Left"), 0)
+                for entry in ergo:
+                    idx = _ERGO_INDEX.get(entry["type"], -1)
+                    if idx >= 0:
+                        ergo_flat[offset + idx] = entry["value"]
 
             # ---- skeleton ----
             nodes = data.get("raw_nodes")
             if nodes:
-                self._acc("skeleton_timestamps", ts)
+                have_skel = True
                 pos = np.array([n["position"] for n in nodes], dtype=np.float32)
                 rot = np.array([n["rotation"] for n in nodes], dtype=np.float32)
-                self._acc_arr("skeleton_positions", pos)
-                self._acc_arr("skeleton_rotations", rot)
+                skel_parts.append((pos, rot))
+
+        if have_ergo:
+            self._acc("ergo_timestamps", ts)
+            self._acc_arr("ergo_data", ergo_flat)
+        if have_skel:
+            self._acc("skeleton_timestamps", ts)
+            self._acc_arr("skeleton_positions",
+                          np.concatenate([p for p, _ in skel_parts], axis=0))
+            self._acc_arr("skeleton_rotations",
+                          np.concatenate([r for _, r in skel_parts], axis=0))
 
     def _refresh_gloves(self) -> None:
         """Refresh glove list from landscape (handles late connections)."""
@@ -150,15 +178,11 @@ class ManusHandPoseRecorder(BaseHandPoseRecorder):
             self._log("[hand_pose:manus] SDK shut down")
 
     def _heartbeat_stats(self, elapsed: float) -> str:
-        n_ergo = len(self._buf.get("ergo_timestamps", []))
-        n_skel = len(self._buf.get("skeleton_timestamps", []))
-        return (
-            f"ergo={n_ergo:>5} ({n_ergo/elapsed:.1f}/s)  "
-            f"skel={n_skel:>5}"
-        )
+        return super()._heartbeat_stats(elapsed)
 
 
-# Map ErgonomicsDataType string → flat 40-ch index (0-19 left, 20-39 right).
+# Map ErgonomicsDataType string (side-agnostic, as returned by
+# GetGloveData) → base index within one hand's 20 channels.
 _ERGO_INDEX = {
     "ThumbMCPSpread":  0,  "ThumbMCPStretch":  1,
     "ThumbPIPStretch": 2,  "ThumbDIPStretch":  3,
@@ -171,8 +195,5 @@ _ERGO_INDEX = {
     "PinkySpread":    16,  "PinkyMCPStretch": 17,
     "PinkyPIPStretch":18,  "PinkyDIPStretch": 19,
 }
-# Build right-hand indices (20-39) using same names.
-_RIGHT = {}
-for _name, _idx in list(_ERGO_INDEX.items()):
-    _RIGHT[_name] = _idx + 20
-_ERGO_INDEX.update(_RIGHT)
+# Side → flat 40-ch offset (left hand occupies 0-19, right 20-39).
+_ERGO_SIDE_OFFSET = {"Left": 0, "Right": 20}

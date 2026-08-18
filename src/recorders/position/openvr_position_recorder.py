@@ -200,8 +200,22 @@ class OpenvrPositionRecorder(BasePositionRecorder):
             self._acc("serials", d["serial"])
             self._acc("models", d["model"])
 
-        self._log(f"[position:openvr] recording {len(self._devices)} devices "
-                  f"duration={cfg.duration}s")
+        self._log(f"[position:openvr] {len(self._devices)} devices — "
+                  f"waiting for first pose ...")
+
+        def _try_poll() -> bool:
+            self._poll(time.time())
+            valid = self._arr_buf.get("valid")
+            return bool(valid and valid[-1].any())
+
+        if not self._wait_first_sample(_try_poll, "pose", timeout=10.0):
+            return False
+        # Gate samples used wall-clock ts; clear the poll keys (keep the
+        # device metadata rows) so the timeline starts from the launcher's t0.
+        for k in ("timestamps_s", "perf_counter_s"):
+            self._buf.pop(k, None)
+        self._arr_buf.clear()
+        self._log("[position:openvr] first pose received — ready")
         return True
 
     def _poll(self, ts):
@@ -219,10 +233,11 @@ class OpenvrPositionRecorder(BasePositionRecorder):
             self._vr = None
 
     def _heartbeat_stats(self, elapsed: float) -> str:
-        n = len(self._buf.get("timestamps_s", []))
-        fps = n / elapsed if elapsed > 0 else 0
         vc = "-"
         if self._arr_buf.get("valid"):
             vc = int(np.sum(self._arr_buf["valid"][-1]))
-        return f"n={n:>5} ({fps:.1f}/s)  valid={vc}/{len(self._devices)}"
+        return (
+            super()._heartbeat_stats(elapsed)
+            + f"  valid={vc}/{len(self._devices)}"
+        )
 

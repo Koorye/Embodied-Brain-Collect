@@ -11,43 +11,46 @@ import time
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 import numpy as np
 
 from src.recorders.hand_pose import ManusHandPoseRecorder, HandPoseRecorderConfig
+from src.recorders.hand_pose.manus_hand_pose_recorder import (
+    _ERGO_INDEX, _ERGO_SIDE_OFFSET,
+)
 from tests.base import SESSION_DIR
 
 
 def main():
     cfg = HandPoseRecorderConfig(session_dir=f"{SESSION_DIR}/hand_pose")
     rec = ManusHandPoseRecorder(cfg)
-    rec._open()
-
-    # Wait up to 10 s for gloves to be detected
-    if not rec._glove_ids:
-        print("[3d] waiting for gloves (up to 10 s) ...")
-        t0 = time.time()
-        while not rec._glove_ids and time.time() - t0 < 10:
-            time.sleep(0.2)
-
-    if not rec._glove_ids:
-        print("[3d] No gloves detected. Ensure Manus Core is running and gloves are paired.")
-        rec._close()
+    if not rec._open():
+        # _open() blocks until BOTH gloves are connected and fails otherwise
+        print(f"[3d] open failed — {rec._open_error}")
         return
 
     fig = plt.figure(figsize=(10, 9))
     fig.canvas.manager.set_window_title("MANUS Hand Skeleton 3D — Q to stop")
 
-    # One 3D subplot per glove or one combined view
+    # One 3D subplot per glove, plus a 40-ch ergo panel across the bottom.
     n_gloves = len(rec._glove_ids)
     cols = min(n_gloves, 2)
     rows = (n_gloves + cols - 1) // cols
+    gs = GridSpec(rows + 1, cols, figure=fig,
+                  height_ratios=[3.0] * rows + [1.2])
     axes = {}
     for i, gid in enumerate(rec._glove_ids):
-        ax = fig.add_subplot(rows, cols, i + 1, projection='3d')
+        ax = fig.add_subplot(gs[i // cols, i % cols], projection='3d')
         side = rec._glove_sides.get(gid, "?")
         ax.set_title(f"Glove {gid} ({side})", fontsize=10)
         ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
         axes[gid] = ax
+
+    ax_ergo = fig.add_subplot(gs[rows, :])
+    ax_ergo.set_title("ergonomics 40-ch (L 0-19 | R 20-39)", fontsize=10)
+    ax_ergo.set_xticks(range(0, 40, 5))
+    ax_ergo.set_ylim(-100, 100)
+    ax_ergo.tick_params(labelsize=6)
 
     running = True
 
@@ -127,6 +130,32 @@ def main():
                     np.linalg.norm(all_pos - center, axis=1), 95)) * 1.3
                 for dim, lim in enumerate([ax.set_xlim, ax.set_ylim, ax.set_zlim]):
                     lim(center[dim] - radius, center[dim] + radius)
+
+            # ---- 40-dim ergo angles, straight from the snapshots ----
+            flat = np.zeros(40, dtype=np.float32)
+            have_ergo = False
+            for data in snapshot.values():
+                if data is None:
+                    continue
+                ergo = data.get("ergonomics")
+                if not ergo:
+                    continue
+                have_ergo = True
+                # entry["type"] is side-agnostic; the snapshot only carries
+                # this glove's own side — offset left to 0-19, right to 20-39.
+                offset = _ERGO_SIDE_OFFSET.get(data.get("side", "Left"), 0)
+                for entry in ergo:
+                    idx = _ERGO_INDEX.get(entry["type"], -1)
+                    if idx >= 0:
+                        flat[offset + idx] = entry["value"]
+            if have_ergo:
+                ax_ergo.clear()
+                ax_ergo.set_ylim(-100, 100)
+                ax_ergo.set_xticks(range(0, 40, 5))
+                ax_ergo.bar(range(40), flat, width=0.85,
+                            color=["#5577bb"] * 20 + ["#e8a020"] * 20)
+                ax_ergo.set_title("ergonomics 40-ch (L 0-19 | R 20-39)",
+                                  fontsize=10)
 
             plt.pause(0.05)
 

@@ -38,6 +38,11 @@ class TestDummyEye(BaseTest):
         if scene:
             self.ax_scene.clear(); self.ax_scene.imshow(scene[-1])
             self.ax_scene.set_title(f"scene ({len(scene)})"); self.ax_scene.axis('off')
+        if len(scene) > 0:
+            import cv2
+            cv2.imshow(
+                "Scene camera with eyes and gaze overlay", scene[-1],
+            )
 
 
 if __name__ == "__main__":

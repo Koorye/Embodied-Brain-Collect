@@ -40,7 +40,7 @@ from src.config.collection import (
     resolve_active_for_stim,
 )
 from src.stim.marker_sender import MarkerSender
-from src.sync import marker_codes as M
+from src.stim import marker_codes as M
 
 
 @dataclass

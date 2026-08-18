@@ -22,7 +22,7 @@ def _bar(t):
         x = int(c * (1 - abs(f - 1)))
         r, g, b = [(c, x, 0), (x, c, 0), (0, c, x),
                     (0, x, c), (x, 0, c), (c, 0, x), (c, 0, 0)][min(h6, 7)]
-        img[:, max(0, x0):min(W, x0 + bw)] = [b, g, r]
+        img[:, max(0, x0):min(W, x0 + bw)] = [r, g, b]
     return img
 
 
@@ -38,5 +38,4 @@ class DummyCameraRecorder(BaseCameraRecorder):
 
     def _poll(self, ts):
         time.sleep(0.033)
-        self._acc_ts("cam", ts)
-        self._acc_arr("frames", _bar(ts))
+        self.arr_video("frames", ts, _bar(ts))

@@ -5,8 +5,8 @@
   "run": 1,
   "scene": 0,
   "paradigm": "1",
-  "neon_ip": "172.16.19.213",
+  "neon_ip": "192.168.236.17",
   "notes": "tasks 可无限追加；每次采集用 --task-id 只选一个任务",
-  "started_at": "2026-08-06_18-25-51",
+  "started_at": "2026-08-13_19-19-52",
   "session_dir": null
 }

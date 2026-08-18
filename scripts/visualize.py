@@ -44,20 +44,20 @@ def main():
     if emg is not None:
         for ch in range(8):
             ax = fig.add_subplot(gs[1 + ch//4, ch%4])
-            ax.plot(emg[:500, ch], linewidth=0.3)
+            ax.plot(emg[:, ch], linewidth=0.3)
             ax.set_ylabel(f"EMG{ch}", fontsize=6)
             ax.tick_params(labelsize=5)
 
     gyro = data.get("emg", {}).get("imu_gyro")
     if gyro is not None:
         ax = fig.add_subplot(gs[1, 4])
-        ax.plot(gyro[:500], linewidth=0.5)
+        ax.plot(gyro[:], linewidth=0.5)
         ax.legend(["gx","gy","gz"], fontsize=5)
         ax.set_title("EMG IMU gyro", fontsize=9)
     accel = data.get("emg", {}).get("imu_accel")
     if accel is not None:
         ax = fig.add_subplot(gs[1, 5])
-        ax.plot(accel[:500], linewidth=0.5)
+        ax.plot(accel[:], linewidth=0.5)
         ax.legend(["ax","ay","az"], fontsize=5)
         ax.set_title("EMG IMU accel", fontsize=9)
 
@@ -65,19 +65,19 @@ def main():
     gaze = data.get("eye", {}).get("gaze_xy")
     if gaze is not None:
         ax = fig.add_subplot(gs[2, 0])
-        ax.plot(gaze[:2000, 0], gaze[:2000, 1], linewidth=0.2)
+        ax.plot(gaze[:, 0], gaze[:, 1], linewidth=0.2)
         ax.set_title(f"eye gaze XY ({gaze.shape[0]})", fontsize=9)
 
     gyro = data.get("eye", {}).get("imu_gyro")
     if gyro is not None:
         ax = fig.add_subplot(gs[2, 1])
-        ax.plot(gyro[:500], linewidth=0.5)
+        ax.plot(gyro[:], linewidth=0.5)
         ax.legend(["gx","gy","gz"], fontsize=5)
         ax.set_title("eye IMU gyro", fontsize=9)
     accel = data.get("eye", {}).get("imu_accel")
     if accel is not None:
         ax = fig.add_subplot(gs[2, 2])
-        ax.plot(accel[:500], linewidth=0.5)
+        ax.plot(accel[:], linewidth=0.5)
         ax.legend(["ax","ay","az"], fontsize=5)
         ax.set_title("eye IMU accel", fontsize=9)
 
@@ -88,11 +88,11 @@ def main():
         ax.plot(pos[:, 0], pos[:, 1], linewidth=0.5)
         ax.set_title(f"position XY ({pos.shape[0]})", fontsize=9)
     quat = data.get("position", {}).get("quaternions_wxyz")
-    if quat is not None:
-        ax = fig.add_subplot(gs[2, 4])
-        ax.plot(quat[:500], linewidth=0.5)
-        ax.legend(["w","x","y","z"], fontsize=5)
-        ax.set_title("quaternion", fontsize=9)
+    # if quat is not None:
+    #     ax = fig.add_subplot(gs[2, 4])
+    #     ax.plot(quat[:], linewidth=0.5)
+    #     ax.legend(["w","x","y","z"], fontsize=5)
+    #     ax.set_title("quaternion", fontsize=9)
 
     # ---- row 2: tactile ----
     tac = data.get("tactile_glove", {}).get("glove_data")
@@ -102,20 +102,20 @@ def main():
         ax.set_title(f"tactile ({tac.shape[0]}×{tac.shape[1]})", fontsize=9)
 
     # ---- row 3-4: hand_pose skeleton joint positions ----
-    skel = data.get("hand_pose", {}).get("skeleton_positions")
-    if skel is not None and skel.ndim == 3:
-        T, N, _ = skel.shape
-        for j in range(min(N, 12)):
-            row = 3 + j // 6
-            ax = fig.add_subplot(gs[row, j % 6])
-            n_pts = min(T, 3000)
-            ax.plot(skel[:n_pts, j, 0], linewidth=0.3, label='X')
-            ax.plot(skel[:n_pts, j, 1], linewidth=0.3, label='Y')
-            ax.plot(skel[:n_pts, j, 2], linewidth=0.3, label='Z')
-            ax.set_title(f"joint {j}", fontsize=7)
-            ax.tick_params(labelsize=5)
-            if j == 0:
-                ax.legend(fontsize=4, loc='upper right')
+    # skel = data.get("hand_pose", {}).get("skeleton_positions")
+    # if skel is not None and skel.ndim == 3:
+    #     T, N, _ = skel.shape
+    #     for j in range(min(N, 12)):
+    #         row = 3 + j // 6
+    #         ax = fig.add_subplot(gs[row, j % 6])
+    #         n_pts = min(T, 3000)
+    #         ax.plot(skel[:n_pts, j, 0], linewidth=0.3, label='X')
+    #         ax.plot(skel[:n_pts, j, 1], linewidth=0.3, label='Y')
+    #         ax.plot(skel[:n_pts, j, 2], linewidth=0.3, label='Z')
+    #         ax.set_title(f"joint {j}", fontsize=7)
+    #         ax.tick_params(labelsize=5)
+    #         if j == 0:
+    #             ax.legend(fontsize=4, loc='upper right')
 
     # ---- row 5: hand_pose ergo + markers ----
     hp = data.get("hand_pose", {}).get("ergo_data")
@@ -123,7 +123,7 @@ def main():
         n_chan = hp.shape[1]
         for ch in range(min(n_chan, 6)):
             ax = fig.add_subplot(gs[5, ch])
-            ax.plot(hp[:1000, ch], linewidth=0.3)
+            ax.plot(hp[:, ch], linewidth=0.3)
             ax.set_title(f"ergo ch{ch}", fontsize=7)
             ax.tick_params(labelsize=5)
 

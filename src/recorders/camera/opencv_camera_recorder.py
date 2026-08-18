@@ -14,9 +14,11 @@ class OpencvCameraRecorder(BaseCameraRecorder):
     def __init__(self, config: OpencvCameraConfig):
         super().__init__(config)
         self._cap = None
+        self._cv2 = None
 
     def _open(self) -> bool:
         import cv2
+        self._cv2 = cv2
 
         cfg = self.config
         cap = cv2.VideoCapture(cfg.idx, cv2.CAP_DSHOW)
@@ -42,16 +44,30 @@ class OpencvCameraRecorder(BaseCameraRecorder):
             while time.time() < deadline:
                 cap.read()
 
-        self._cap = cap
-        return True
+        # First-data gate: one successful read proves the stream is live.
+        self._log("[camera:opencv] waiting for first frame ...")
+        t0 = time.time()
+        while time.time() - t0 < 10.0:
+            ok, _ = cap.read()
+            if ok:
+                self._cap = cap
+                self._log("[camera:opencv] first frame received — ready")
+                return True
+        cap.release()
+        self._open_error = "no frame within 10 s"
+        self._log(f"[camera:opencv] open failed — {self._open_error}")
+        return False
 
     def _poll(self, ts):
         assert self._cap is not None
         ok, frame = self._cap.read()
         if not ok or frame is None:
             return
-        self._acc_ts("cam", ts)
-        self._acc_arr("frames", frame)
+        # Absolute host wall-clock at frame grab (unix seconds).
+        now = time.time()
+        # VideoCapture delivers BGR; record RGB like the other cameras.
+        self.arr_video("frames", now,
+                       self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB))
 
     def _close(self) -> None:
         if self._cap is not None:

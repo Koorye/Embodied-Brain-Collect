@@ -6,7 +6,8 @@ from ..base import BaseRecorderConfig
 @dataclass
 class CameraRecorderConfig(BaseRecorderConfig):
     """Base camera config.  Subclass for specific hardware."""
-    pass
+    crf: int = 23        # libx265 quality (lower = better / bigger)
+    preset: str = "medium"  # libx265 speed preset
 
 
 @dataclass
@@ -23,6 +24,16 @@ class OpencvCameraConfig(CameraRecorderConfig):
 @dataclass
 class DepthaiCameraConfig(CameraRecorderConfig):
     """OAK-D / Luxonis depthai camera."""
-    cam_w: int = 640
-    cam_h: int = 360
+    cam_w: int = 1280       # nearest supported resolution is picked
+    cam_h: int = 720
     cam_fps_hint: float = 30.0
+
+
+@dataclass
+class RealsenseCameraConfig(CameraRecorderConfig):
+    """Intel RealSense depth camera (D400 series)."""
+    serial: str = ""      # device serial; "" = auto-pick first available
+    width: int = 640
+    height: int = 480
+    fps: int = 30
+    depth: bool = False  # also record depth frames aligned to color

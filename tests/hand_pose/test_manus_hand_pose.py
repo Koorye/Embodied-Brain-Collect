@@ -10,9 +10,9 @@ class TestManusHandPose(BaseTest):
     name = "Manus Hand Pose"
 
     def _build_layout(self, fig):
-        gs = GridSpec(6, 4, figure=fig)
-        self.ax_ergo = [fig.add_subplot(gs[i // 4, i % 4]) for i in range(20)]
-        self.ax_skel = fig.add_subplot(gs[5, :])
+        gs = GridSpec(11, 4, figure=fig)
+        self.ax_ergo = [fig.add_subplot(gs[i // 4, i % 4]) for i in range(40)]
+        self.ax_skel = fig.add_subplot(gs[10, :])
         for ax in self.ax_ergo:
             ax.tick_params(labelsize=5)
 
@@ -32,8 +32,8 @@ class TestManusHandPose(BaseTest):
             ts = [i / max(n - 1, 1) * elapsed for i in range(n)] if n > 1 else [0.0]
             sl = self._rolling(ts, elapsed, window=5.0)
             e = self._downsample(np.stack(ergo[sl]))
-            # Show first 20 channels (left hand)
-            for ch in range(min(20, e.shape[1])):
+            # All 40 channels: 0-19 left hand, 20-39 right hand
+            for ch in range(min(40, e.shape[1])):
                 self.ax_ergo[ch].clear()
                 self.ax_ergo[ch].plot(e[:, ch], linewidth=0.3)
                 self.ax_ergo[ch].set_ylabel(f"ch{ch}", fontsize=5)

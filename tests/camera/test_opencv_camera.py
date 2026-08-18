@@ -10,7 +10,7 @@ class TestOpencvCamera(TestDummyCamera):
 
 
 def main():
-    cfg = OpencvCameraConfig(session_dir=f"{SESSION_DIR}/camera")
+    cfg = OpencvCameraConfig(session_dir=f"{SESSION_DIR}/camera", idx=2)
     rec = OpencvCameraRecorder(cfg)
     TestOpencvCamera(rec).run()
 

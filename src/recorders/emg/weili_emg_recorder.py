@@ -1,6 +1,7 @@
 """Weili (WAVELETECH) 8-channel EMG — real serial port, 29-byte frames."""
 
 import struct
+import time
 
 import numpy as np
 import serial
@@ -60,9 +61,25 @@ class WeiliEmgRecorder(BaseEmgRecorder):
                 self._log(f"  - {p.device}: {p.description} [{p.hwid}]")
             return False
 
-        self._log(f"[emg:weili] open {port} @ {self.config.baud}")
+        self._log(f"[emg:weili] open {port} @ {self.config.baud} — "
+                  f"waiting for first frame ...")
         self._ser = serial.Serial(port, self.config.baud, timeout=0.005)
         self._ser.reset_input_buffer()
+
+        def _try_poll() -> bool:
+            self._poll(time.time())
+            return bool(self._buf.get("emg_sn"))
+
+        if not self._wait_first_sample(_try_poll, "EMG frame", timeout=5.0):
+            self._ser.close()
+            self._ser = None
+            return False
+        # Gate samples used wall-clock ts; clear so the session timeline
+        # starts clean from the launcher's t0.
+        self._buf.clear()
+        self._arr_buf.clear()
+        self._raw_buf.clear()
+        self._log("[emg:weili] first frame received — ready")
         return True
 
     def _poll(self, ts):
@@ -130,9 +147,4 @@ class WeiliEmgRecorder(BaseEmgRecorder):
             self._ser = None
 
     def _heartbeat_stats(self, elapsed: float) -> str:
-        n_emg = len(self._buf.get("emg_sn", []))
-        n_imu = len(self._buf.get("imu_sn", []))
-        return (
-            f"emg={n_emg:>5} ({n_emg/elapsed:.1f}/s)  "
-            f"imu={n_imu:>5}  drop={self._dropped}"
-        )
+        return super()._heartbeat_stats(elapsed) + f"  drop={self._dropped}"

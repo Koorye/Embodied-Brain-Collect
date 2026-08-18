@@ -9,7 +9,10 @@ Each modality follows the convention::
         <vendor>_<name>_recorder.py # Concrete hardware implementation
 """
 from .base import BaseRecorder, BaseRecorderConfig
-from .camera import DummyCameraRecorder, OpencvCameraRecorder, DepthaiCameraRecorder
+from .camera import (
+    DummyCameraRecorder, OpencvCameraRecorder, DepthaiCameraRecorder,
+    RealsenseCameraRecorder,
+)
 from .emg import DummyEmgRecorder, WeiliEmgRecorder
 from .eye import DummyEyeRecorder, NeonEyeRecorder
 from .hand_pose import DummyHandPoseRecorder, ManusHandPoseRecorder

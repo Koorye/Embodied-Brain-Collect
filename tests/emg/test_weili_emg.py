@@ -12,7 +12,7 @@ class TestWeiliEmg(TestDummyEmg):
 def main():
     from src.recorders.emg.weili_emg_recorder import _auto_detect_port
     print("Auto-detected Weili EMG port:", _auto_detect_port())
-    cfg = EmgRecorderConfig(session_dir=f"{SESSION_DIR}/emg")
+    cfg = EmgRecorderConfig(session_dir=f"{SESSION_DIR}/emg", port="COM28")
     rec = WeiliEmgRecorder(cfg)
     # rec.run()
     TestWeiliEmg(rec).run()
