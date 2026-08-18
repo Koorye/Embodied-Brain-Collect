@@ -5,8 +5,8 @@ recorder's config dataclass (plus the common ``session_dir`` / ``duration`` /
 ``open_timeout``), so a caller can tune anything without constructing
 configs by hand::
 
-    from src.session.recorder_presets import get_weili_emg, get_realsense_camera
-    from src.session.launcher import launch
+    from embodied_brain_collect.session.recorder_presets import get_weili_emg, get_realsense_camera
+    from embodied_brain_collect.session.launcher import launch
 
     launch({
         "emg":     get_weili_emg("./sessions/run1", duration=120),
@@ -16,11 +16,11 @@ configs by hand::
 
 from __future__ import annotations
 
-from src.recorders.base import BaseRecorder
+from embodied_brain_collect.recorders.base import BaseRecorder
 
 # ---- EMG ----------------------------------------------------------------
 
-from src.recorders.emg import (
+from embodied_brain_collect.recorders.emg import (
     DummyEmgRecorder, WeiliEmgRecorder, EmgRecorderConfig,
 )
 
@@ -42,7 +42,7 @@ def get_weili_emg(session_dir: str, duration: float = 0.0,
 
 # ---- Hand Pose ----------------------------------------------------------
 
-from src.recorders.hand_pose import (
+from embodied_brain_collect.recorders.hand_pose import (
     DummyHandPoseRecorder, ManusHandPoseRecorder, HandPoseRecorderConfig,
 )
 
@@ -72,7 +72,7 @@ def get_manus_hand_pose(session_dir: str, duration: float = 0.0,
 
 # ---- Camera -------------------------------------------------------------
 
-from src.recorders.camera import (
+from embodied_brain_collect.recorders.camera import (
     DummyCameraRecorder, OpencvCameraRecorder, DepthaiCameraRecorder,
     RealsenseCameraRecorder,
     CameraRecorderConfig, OpencvCameraConfig, DepthaiCameraConfig,
@@ -125,7 +125,7 @@ def get_realsense_camera(session_dir: str, duration: float = 0.0,
 
 # ---- Eye -----------------------------------------------------------------
 
-from src.recorders.eye import (
+from embodied_brain_collect.recorders.eye import (
     DummyEyeRecorder, NeonEyeRecorder, EyeRecorderConfig, NeonEyeAsyncRecorder,
 )
 
@@ -161,7 +161,7 @@ def get_neon_eye_async(session_dir: str, duration: float = 0.0,
 
 # ---- Position -----------------------------------------------------------
 
-from src.recorders.position import (
+from embodied_brain_collect.recorders.position import (
     DummyPositionRecorder, OpenvrPositionRecorder, PositionRecorderConfig,
 )
 
@@ -183,7 +183,7 @@ def get_openvr_position(session_dir: str, duration: float = 0.0,
 
 # ---- Marker -------------------------------------------------------------
 
-from src.recorders.marker import (
+from embodied_brain_collect.recorders.marker import (
     DummyMarkerRecorder, UdpMarkerRecorder, MarkerRecorderConfig,
 )
 
@@ -206,7 +206,7 @@ def get_udp_marker(session_dir: str, duration: float = 0.0,
 
 # ---- Tactile ------------------------------------------------------------
 
-from src.recorders.tactile import (
+from embodied_brain_collect.recorders.tactile import (
     DummyTactileRecorder, TouchtronixTactileRecorder, TactileRecorderConfig,
 )
 

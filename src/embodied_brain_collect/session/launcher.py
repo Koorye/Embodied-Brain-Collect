@@ -11,17 +11,17 @@ launch with the specific reason — nothing is recorded.
 Usage::
 
     # CLI: production hardware + stim
-    python -m src.session.launcher --session-dir ./sessions/run1 --with-stim
+    python -m embodied_brain_collect.session.launcher --session-dir ./sessions/run1 --with-stim
 
     # CLI: dummy test without stim
-    python -m src.session.launcher --dummy --session-dir ./test --duration 10
+    python -m embodied_brain_collect.session.launcher --dummy --session-dir ./test --duration 10
 
     # Code: custom setup
-    from src.session.launcher import launch
-    from src.session.recorder_presets import get_production_recorders
+    from embodied_brain_collect.session.launcher import launch
+    from embodied_brain_collect.session.recorder_presets import get_production_recorders
 
     recs = get_production_recorders(session_dir="./sessions/run1")
-    launch(recs, stim_cmd=["python", "-m", "src.stim.paradigm1_pickplace",
+    launch(recs, stim_cmd=["python", "-m", "embodied_brain_collect.stim.paradigm1_pickplace",
                            "--task-id", "0", "--windowed"])
 """
 
@@ -34,9 +34,9 @@ import time
 from pathlib import Path
 from typing import Sequence
 
-from src.recorders.base import BaseRecorder
+from embodied_brain_collect.recorders.base import BaseRecorder
 
-SRC = Path(__file__).resolve().parents[1]
+SRC = Path(__file__).resolve().parents[3]  # repo root
 
 # fork: children inherit the already-constructed recorder objects (they are
 # not picklable — loguru loggers, open handles — but fork needs no pickling).
@@ -166,7 +166,7 @@ def launch(
         print(f"[launcher] stim: {' '.join(stim_argv)}")
         stim_proc = subprocess.Popen(
             stim_argv,
-            cwd=str(SRC.parent),  # project root
+            cwd=str(SRC),  # repo root
         )
 
     go_evt.set()
@@ -248,7 +248,7 @@ def launch(
 
 
 def main(argv: list[str] | None = None) -> int:
-    from src.session.recorder_presets import get_dummy_recorders, get_production_recorders
+    from embodied_brain_collect.session.recorder_presets import get_dummy_recorders, get_production_recorders
 
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -288,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     stim_cmd = None
     if args.with_stim:
         stim_cmd = [
-            sys.executable, "-m", "src.stim.paradigm1_pickplace",
+            sys.executable, "-m", "embodied_brain_collect.stim.paradigm1_pickplace",
             "--once",
             "--windowed" if not args.stim_fullscreen else "--fullscreen",
             "--fast", str(args.stim_fast),

@@ -2,7 +2,7 @@
 
 from tests.marker.test_dummy_marker import TestDummyMarker
 from tests.base import SESSION_DIR
-from src.recorders.marker import UdpMarkerRecorder, MarkerRecorderConfig
+from embodied_brain_collect.recorders.marker import UdpMarkerRecorder, MarkerRecorderConfig
 
 
 class TestUdpMarker(TestDummyMarker):

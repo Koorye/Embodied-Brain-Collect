@@ -33,14 +33,14 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from src.config.collection import (
+from embodied_brain_collect.config.collection import (
     CollectionConfig,
     ActiveSession,
     DEFAULT_COLLECTION_PATH,
     resolve_active_for_stim,
 )
-from src.stim.marker_sender import MarkerSender
-from src.stim import marker_codes as M
+from embodied_brain_collect.stim.marker_sender import MarkerSender
+from embodied_brain_collect.stim import marker_codes as M
 
 
 @dataclass

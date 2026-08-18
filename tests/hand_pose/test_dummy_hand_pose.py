@@ -2,7 +2,7 @@
 
 import numpy as np
 from tests.base import BaseTest, SESSION_DIR
-from src.recorders.hand_pose import DummyHandPoseRecorder, HandPoseRecorderConfig
+from embodied_brain_collect.recorders.hand_pose import DummyHandPoseRecorder, HandPoseRecorderConfig
 
 
 class TestDummyHandPose(BaseTest):

@@ -3,7 +3,7 @@
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from tests.base import BaseTest, SESSION_DIR
-from src.recorders.hand_pose import ManusHandPoseRecorder, HandPoseRecorderConfig
+from embodied_brain_collect.recorders.hand_pose import ManusHandPoseRecorder, HandPoseRecorderConfig
 
 
 class TestManusHandPose(BaseTest):

@@ -2,7 +2,7 @@
 
 from tests.camera.test_dummy_camera import TestDummyCamera
 from tests.base import SESSION_DIR
-from src.recorders.camera import OpencvCameraRecorder, OpencvCameraConfig
+from embodied_brain_collect.recorders.camera import OpencvCameraRecorder, OpencvCameraConfig
 
 
 class TestOpencvCamera(TestDummyCamera):

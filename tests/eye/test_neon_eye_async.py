@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 
 from tests.eye.test_dummy_eye import TestDummyEye
 from tests.base import SESSION_DIR
-from src.recorders.eye import NeonEyeAsyncRecorder, EyeRecorderConfig
+from embodied_brain_collect.recorders.eye import NeonEyeAsyncRecorder, EyeRecorderConfig
 
 
 class TestNeonEye(TestDummyEye):

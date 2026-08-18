@@ -3,7 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from tests.base import BaseTest, SESSION_DIR
-from src.recorders.camera import DummyCameraRecorder, CameraRecorderConfig
+from embodied_brain_collect.recorders.camera import DummyCameraRecorder, CameraRecorderConfig
 
 
 class TestDummyCamera(BaseTest):

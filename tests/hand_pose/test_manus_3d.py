@@ -14,8 +14,8 @@ import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
 import numpy as np
 
-from src.recorders.hand_pose import ManusHandPoseRecorder, HandPoseRecorderConfig
-from src.recorders.hand_pose.manus_hand_pose_recorder import (
+from embodied_brain_collect.recorders.hand_pose import ManusHandPoseRecorder, HandPoseRecorderConfig
+from embodied_brain_collect.recorders.hand_pose.manus_hand_pose_recorder import (
     _ERGO_INDEX, _ERGO_SIDE_OFFSET,
 )
 from tests.base import SESSION_DIR

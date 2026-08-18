@@ -1,7 +1,7 @@
 """Test dummy marker."""
 
 from tests.base import BaseTest, SESSION_DIR
-from src.recorders.marker import DummyMarkerRecorder, MarkerRecorderConfig
+from embodied_brain_collect.recorders.marker import DummyMarkerRecorder, MarkerRecorderConfig
 
 
 class TestDummyMarker(BaseTest):

@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "embodied-brain-collect"
+version = "0.1.0"
+description = "Multi-modal data collection framework (Neon eye, cameras, EMG, gloves, position, markers)"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -3,7 +3,7 @@
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from tests.base import BaseTest, SESSION_DIR
-from src.recorders.eye import DummyEyeRecorder, EyeRecorderConfig
+from embodied_brain_collect.recorders.eye import DummyEyeRecorder, EyeRecorderConfig
 
 
 class TestDummyEye(BaseTest):

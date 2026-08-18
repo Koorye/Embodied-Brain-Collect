@@ -3,7 +3,7 @@
 import numpy as np
 from matplotlib.gridspec import GridSpec
 from tests.base import BaseTest, SESSION_DIR
-from src.recorders.tactile import DummyTactileRecorder, TactileRecorderConfig
+from embodied_brain_collect.recorders.tactile import DummyTactileRecorder, TactileRecorderConfig
 
 LABELS = ["quat(4)", "gyro(3)", "accel(3)", "bend(5)", "finger(60)", "palm(60)"]
 SLICES = [(0,4), (4,7), (7,10), (10,15), (15,75), (75,135)]

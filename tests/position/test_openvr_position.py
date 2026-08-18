@@ -4,7 +4,7 @@ import numpy as np
 
 from tests.position.test_dummy_position import TestDummyPosition
 from tests.base import SESSION_DIR
-from src.recorders.position import OpenvrPositionRecorder, PositionRecorderConfig
+from embodied_brain_collect.recorders.position import OpenvrPositionRecorder, PositionRecorderConfig
 
 
 class TestOpenvrPosition(TestDummyPosition):

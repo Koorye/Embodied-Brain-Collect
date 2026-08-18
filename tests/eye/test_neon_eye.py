@@ -2,7 +2,7 @@
 
 from tests.base import SESSION_DIR
 from .test_dummy_eye import TestDummyEye
-from src.recorders.eye import NeonEyeRecorder, EyeRecorderConfig
+from embodied_brain_collect.recorders.eye import NeonEyeRecorder, EyeRecorderConfig
 
 
 class TestNeonEye(TestDummyEye):

@@ -3,7 +3,7 @@
 from matplotlib.gridspec import GridSpec
 from tests.camera.test_dummy_camera import TestDummyCamera
 from tests.base import SESSION_DIR
-from src.recorders.camera import RealsenseCameraRecorder, RealsenseCameraConfig
+from embodied_brain_collect.recorders.camera import RealsenseCameraRecorder, RealsenseCameraConfig
 
 
 class TestRealsenseCamera(TestDummyCamera):
