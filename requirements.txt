@@ -1,0 +1,12 @@
+numpy==2.2.6
+opencv-python
+pyzmq>=25.0.0
+pyserial==3.5
+pupil-labs-realtime-api==1.8.0
+depthai==3.6.1
+pyrealsense2
+openvr
+matplotlib
+scipy
+loguru==0.7.3
+pyyaml

@@ -1,0 +1,44 @@
+# QC 检查阈值。键 = 检查类名小写 + 参数名(大小写/下划线不敏感);未列出的用代码默认值。
+
+timestamp_gap:
+  min_s: 0.1              # 缺口超过此秒数 -> ERROR
+
+timestamp_jump:
+  mult: 3.0               # 间隔 > mult × 中位间隔 = 跳变
+
+interval_jitter:
+  cv_warn: 0.3
+
+sliding_window_rate:
+  window_s: 1.0
+  dev_frac: 0.5           # 偏离中位速率 ±50% = 告警
+
+mad_outlier:
+  frac_warn: 0.001
+
+black_frame:
+  lum_thr: 8.0            # 亮度低于此 = 黑屏(0-255)
+  run_s: 2.0
+
+freeze:
+  diff_thr: 1.0           # 帧差低于此 = 冻结
+  run_s: 2.0
+
+tracking_gap:
+  min_s: 0.1
+
+# 网页滤波预设(scripts/qc_report.py 渲染时嵌入滤波副本,仅用于页面显示,
+# 原始 npz 数据永不修改)。键 = 流族(eeg/emg),参数与
+# visualizers/signal_filter.py 的 FilterPreset 一致:带通 [lo, hi] +
+# 50 Hz 工频陷波基频及每个低于奈奎斯特的谐波。
+filter:
+  eeg:
+    lo: 0.5               # 带通低边 Hz
+    hi: 70.0              # 带通高边 Hz
+    notch_base: 50.0      # 工频基频(谐波自动覆盖到奈奎斯特)
+    notch_q: 30.0
+    order: 4              # Butterworth 阶数
+  emg:
+    lo: 20.0
+    hi: 450.0
+    notch_base: 50.0

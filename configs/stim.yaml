@@ -1,0 +1,32 @@
+# 刺激程序(marker 发送)配置。所有 stim 参数都在这里 —— launcher 不传任何
+# stim 参数,只指定用哪个 kind(--stim paradigm1 / --stim sync_test)。
+
+# ---- 公共:MarkerSender 传输 ----
+parallelbox: COM14        # ParallelBox TTL 串口
+baud: 115200
+hold_s: 0.020             # 串口脉冲保持时间
+udp_host: "127.0.0.1"     # UDP 标记(给 marker recorder)
+udp_port: 9999
+serial: true              # 是否写串口 TTL
+
+# ---- paradigm1_pickplace ----
+paradigm1:
+  fullscreen: true
+  fast: 1.0               # 时间压缩(演练用)
+  width: 1920
+  height: 1080
+  font_size: 64
+  fix_radius: 14
+  fix_pre_s: 2.0          # 注视点预呈现
+  instr_s: 5.0           # 指令呈现时长
+
+# ---- sync_test ----
+sync_test:
+  fullscreen: false
+  width: 1920
+  height: 1080
+  font_size: 72
+  imag_s: 10.0            # 想象阶段时长
+  read_s: 5.0             # 想象序列提示画面时长
+  cycle_s: 2.5            # 每个动作时长
+  cycles: 3               # 执行阶段循环轮数

@@ -1,0 +1,280 @@
+
+2026-08-24 15:16:56 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:16:56 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:17:26 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:17:27 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 15:19:16 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:19:16 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:19:22 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:19:23 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 15:26:41 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:26:41 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:26:57 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:26:58 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 15:26:58 : python.exe : DEBUG : 2026-08-24 15:26:58 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:26:58 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:47:21 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:47:21 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:47:28 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:47:29 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 15:48:20 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:48:20 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:48:42 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:48:43 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 15:48:43 : python.exe : DEBUG : 2026-08-24 15:48:43 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:48:43 : python.exe : DEBUG : 50 x : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:48:43 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:49:11 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:49:11 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:49:36 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:49:36 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 15:49:37 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:49:37 : python.exe : DEBUG : 63 x : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:49:37 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:51:53 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:51:53 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:51:59 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:52:00 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 15:52:14 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:52:14 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:52:43 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:52:45 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 15:53:33 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:53:33 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 15:53:55 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 15:53:56 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 15:53:56 : python.exe : DEBUG : 2026-08-24 15:53:56 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:53:56 : python.exe : DEBUG : 2 x : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:53:56 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:57:29 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:57:30 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:57:56 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:57:56 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:59:03 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:59:03 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 15:59:58 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 15:59:58 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 16:00:29 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:00:29 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:00:36 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:00:37 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 16:00:43 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:00:43 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:01:04 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:01:05 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 16:02:07 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:02:07 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:02:39 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:02:40 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 16:03:09 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:03:09 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:04:02 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:04:03 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 16:10:36 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:10:36 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:11:29 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:11:30 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 16:16:28 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:16:28 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:16:46 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:16:47 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 16:16:48 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:16:48 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 16:20:08 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:20:08 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 16:20:30 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 16:20:31 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 16:20:31 : python.exe : DEBUG : 2026-08-24 16:20:31 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:20:31 : python.exe : DEBUG : 29 x : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 16:20:31 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 17:08:15 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:08:15 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:08:20 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:08:21 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 17:08:21 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:08:21 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:08:21 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 17:09:35 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:09:35 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:10:01 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:10:02 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 17:11:19 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:11:19 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:11:51 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:11:52 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 17:12:55 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:12:55 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:13:27 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:13:28 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 17:21:27 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:21:27 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:21:50 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:21:51 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 17:21:51 : python.exe : DEBUG : 2026-08-24 17:21:51 : python.exe : DEBUG : 2026-08-24 17:21:51 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:21:51 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 17:25:17 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:25:17 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:26:01 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:26:02 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 17:33:53 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:33:53 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:34:14 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:34:15 : python.exe : DEBUG : ManusExit() finished...
+2026-08-24 17:34:15 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:34:15 : python.exe : DEBUG : 2026-08-24 17:34:15 : python.exe : DEBUG : 10 x : 2026-08-24 17:34:15 : python.exe : DEBUG : 10 x : 2026-08-24 17:34:15 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+10 x : 2026-08-24 17:34:15 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: finished successful
+ : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: finished successful
+ : DEBUG : 2026-0810 x : 34:15 : python.exe : DEBUG : 2026-08-24 17:34:15 : python.exe2026-08-24 2026-08-24 17:34:15 : python.exeManusInit: ManusInit: finished successful
+ : DEBUG : ManusInit: finished successful
+
+2026-08-24 17:39:32 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:39:32 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:39:52 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:39:53 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-24 17:44:17 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:44:17 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 17:49:42 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:49:42 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-24 17:50:32 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-24 17:50:32 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-24 17:50:58 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-24 17:50:59 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 12:59:56 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 12:59:56 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-25 13:01:02 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:01:02 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:01:24 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:01:25 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:02:29 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:02:29 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:02:50 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:02:51 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:03:47 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:03:47 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:03:54 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:03:55 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:11:38 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:11:38 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:12:02 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:12:03 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:12:16 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:12:16 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:12:23 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:12:24 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:12:34 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:12:34 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:12:41 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:12:42 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:13:03 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:13:03 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:13:10 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:13:11 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:13:23 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:13:23 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:13:47 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:13:48 : python.exe : DEBUG : ManusExit() finished...
+2026-08-25 13:13:48 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:13:48 : python.exe : DEBUG : ManusInit: finished successful
+
+2026-08-25 13:14:00 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:14:00 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:14:09 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:14:10 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:14:20 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:14:20 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:14:42 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:14:43 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:14:54 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:14:54 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:15:16 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:15:17 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:16:37 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:16:37 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:16:44 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:16:45 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:17:20 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:17:20 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:17:41 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:17:42 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:24:05 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:24:05 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:24:12 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:24:13 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:24:18 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:24:18 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:24:43 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:24:44 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:25:47 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:25:47 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:26:08 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:26:09 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:26:20 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:26:20 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:26:41 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:26:42 : python.exe : DEBUG : ManusExit() finished...
+
+2026-08-25 13:27:25 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:27:25 : python.exe : DEBUG : ManusInit: finished successful
+2026-08-25 13:27:47 : python.exe : DEBUG : DeviceManager::~DeviceManager()
+2026-08-25 13:27:48 : python.exe : DEBUG : ManusExit() finished...
+2026-08-25 13:27:48 : python.exe : DEBUG : 2026-08-25 13:27:48 : python.exe : DEBUG : ManusInit: creating DeviceManager and CCallbacks
+ManusInit: creating DeviceManager and CCallbacks
+2026-08-25 13:27:48 : python.exe : DEBUG : 2026-08-25 13:27:48 : python.exe : DEBUG : ManusInit: finished successful
+ManusInit: finished successful

@@ -1,0 +1,948 @@
+{
+  "session_dir": "data/session4",
+  "streams": {
+    "cam_head": {
+      "files": [
+        "cam_head.log",
+        "cam_head_timestamps.npz",
+        "frames.mp4",
+        "frames_timestamps.txt"
+      ],
+      "streams": {
+        "frames": {
+          "n": 733,
+          "findings": [],
+          "t0": 1787054145.5333233,
+          "t1": 1787054169.7712724,
+          "duration": 24.23794913291931,
+          "rate": 30.200574973804937,
+          "interval_median": 0.033385276794433594,
+          "interval_cv": 0.10223802489818068,
+          "mean_rate": 29.953323620990087,
+          "missing_segments": [],
+          "per_sec_min": 19,
+          "per_sec_max": 30,
+          "per_sec_avg": 29.541666666666668,
+          "per_sec_std": 2.1980894481849966,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "expected_rate": 30.0,
+          "level": "INFO"
+        }
+      },
+      "findings": [],
+      "video": {
+        "file": "frames.mp4",
+        "findings": [],
+        "n_frames": 733,
+        "n_meta_frames": 733,
+        "fps_meta": 30.0,
+        "duration": 24.433333333333334,
+        "n_ts": 733,
+        "mean_luminance": 107.85591646293935,
+        "frozen_runs": [],
+        "black_runs": [],
+        "frozen_fraction": 0.0,
+        "black_fraction": 0.0,
+        "level": "INFO"
+      },
+      "log_errors": [],
+      "level": "INFO"
+    },
+    "cam_left_wrist": {
+      "files": [
+        "cam_left_wrist.log",
+        "cam_left_wrist_timestamps.npz",
+        "frames.mp4",
+        "frames_timestamps.txt"
+      ],
+      "streams": {
+        "frames": {
+          "n": 726,
+          "findings": [],
+          "t0": 1787054145.5338628,
+          "t1": 1787054169.8100393,
+          "duration": 24.27617645263672,
+          "rate": 29.864670056855484,
+          "interval_median": 0.03197336196899414,
+          "interval_cv": 0.14562745711926284,
+          "mean_rate": 31.276035375001864,
+          "missing_segments": [],
+          "per_sec_min": 15,
+          "per_sec_max": 31,
+          "per_sec_avg": 29.208333333333332,
+          "per_sec_std": 3.013568851415581,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "expected_rate": 30.0,
+          "level": "INFO"
+        }
+      },
+      "findings": [],
+      "video": {
+        "file": "frames.mp4",
+        "findings": [],
+        "n_frames": 726,
+        "n_meta_frames": 726,
+        "fps_meta": 30.0,
+        "duration": 24.2,
+        "n_ts": 726,
+        "mean_luminance": 124.94512861394558,
+        "frozen_runs": [],
+        "black_runs": [],
+        "frozen_fraction": 0.0,
+        "black_fraction": 0.0,
+        "level": "INFO"
+      },
+      "log_errors": [],
+      "level": "INFO"
+    },
+    "cam_right_wrist": {
+      "files": [
+        "cam_right_wrist.log",
+        "cam_right_wrist_timestamps.npz",
+        "frames.mp4",
+        "frames_timestamps.txt"
+      ],
+      "streams": {
+        "frames": {
+          "n": 725,
+          "findings": [],
+          "t0": 1787054145.5338628,
+          "t1": 1787054169.7913895,
+          "duration": 24.257526636123657,
+          "rate": 29.846406472531235,
+          "interval_median": 0.03198254108428955,
+          "interval_cv": 0.14749822585578817,
+          "mean_rate": 31.2670590296285,
+          "missing_segments": [],
+          "per_sec_min": 15,
+          "per_sec_max": 30,
+          "per_sec_avg": 29.208333333333332,
+          "per_sec_std": 2.985788096224438,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "expected_rate": 30.0,
+          "level": "INFO"
+        }
+      },
+      "findings": [],
+      "video": {
+        "file": "frames.mp4",
+        "findings": [],
+        "n_frames": 725,
+        "n_meta_frames": 725,
+        "fps_meta": 30.0,
+        "duration": 24.166666666666668,
+        "n_ts": 725,
+        "mean_luminance": 117.70851210406036,
+        "frozen_runs": [],
+        "black_runs": [],
+        "frozen_fraction": 0.041666666666666664,
+        "black_fraction": 0.0,
+        "level": "INFO"
+      },
+      "log_errors": [],
+      "level": "INFO"
+    },
+    "cam_third": {
+      "files": [
+        "cam_third.log",
+        "cam_third_timestamps.npz",
+        "frames.mp4",
+        "frames_timestamps.txt"
+      ],
+      "streams": {
+        "frames": {
+          "n": 729,
+          "findings": [],
+          "t0": 1787054145.5333233,
+          "t1": 1787054169.782393,
+          "duration": 24.249069690704346,
+          "rate": 30.021770289978257,
+          "interval_median": 0.033383965492248535,
+          "interval_cv": 0.031952778884408346,
+          "mean_rate": 29.9545001696156,
+          "missing_segments": [],
+          "per_sec_min": 15,
+          "per_sec_max": 30,
+          "per_sec_avg": 29.375,
+          "per_sec_std": 2.9973947020704497,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "expected_rate": 30.0,
+          "level": "INFO"
+        }
+      },
+      "findings": [],
+      "video": {
+        "file": "frames.mp4",
+        "findings": [],
+        "n_frames": 729,
+        "n_meta_frames": 729,
+        "fps_meta": 30.0,
+        "duration": 24.3,
+        "n_ts": 729,
+        "mean_luminance": 105.15257168101616,
+        "frozen_runs": [],
+        "black_runs": [],
+        "frozen_fraction": 0.25,
+        "black_fraction": 0.0,
+        "level": "INFO"
+      },
+      "log_errors": [],
+      "level": "INFO"
+    },
+    "camera": {
+      "files": [
+        "camera.log"
+      ],
+      "findings": [
+        [
+          "WARN",
+          "no data files (leftover dir or recorder failed to save)"
+        ]
+      ],
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "eeg": {
+      "files": [
+        "eeg.log",
+        "eeg.npz"
+      ],
+      "streams": {
+        "eeg": {
+          "n": 35000,
+          "findings": [
+            [
+              "WARN",
+              "21 timestamps go backwards (max back-step 0.996s)"
+            ],
+            [
+              "WARN",
+              "12 jump(s) > 3x median interval, largest 8.236s, 0.028s, 0.020s"
+            ],
+            [
+              "WARN",
+              "1 missing segment(s), 8.2s total, longest 8.2s"
+            ],
+            [
+              "INFO",
+              "  gap at t=1787054136.3s (offset 2.0s), 8.2s \u2248 8237 samples"
+            ],
+            [
+              "WARN",
+              "interval jitter CV 44.04 \u2014 unstable timing"
+            ],
+            [
+              "WARN",
+              "3/35 s deviate >50% from median rate (1001/s): t=1787054145s:6261, t=1787054144s:3461, t=1787054137s:0"
+            ],
+            [
+              "WARN",
+              "7/35 s with zero samples"
+            ]
+          ],
+          "t0": 1787054134.3041277,
+          "t1": 1787054169.2784214,
+          "duration": 34.97429370880127,
+          "rate": 1000.706412870105,
+          "interval_median": 0.0009999275207519531,
+          "interval_cv": 44.03645362141778,
+          "mean_rate": 1000.072484501669,
+          "missing_segments": [
+            {
+              "t": 1787054136.3031278,
+              "offset": 1.999000072479248,
+              "gap_s": 8.236274480819702,
+              "missed": 8237
+            }
+          ],
+          "per_sec_min": 0,
+          "per_sec_max": 6261,
+          "per_sec_avg": 992.0285714285715,
+          "per_sec_std": 1086.461687858193,
+          "empty_seconds": 7,
+          "n_seconds": 35,
+          "expected_rate": 1000.0,
+          "level": "WARN"
+        }
+      },
+      "findings": [
+        [
+          "WARN",
+          "21 timestamps go backwards (max back-step 0.996s)"
+        ],
+        [
+          "WARN",
+          "12 jump(s) > 3x median interval, largest 8.236s, 0.028s, 0.020s"
+        ],
+        [
+          "WARN",
+          "1 missing segment(s), 8.2s total, longest 8.2s"
+        ],
+        [
+          "INFO",
+          "  gap at t=1787054136.3s (offset 2.0s), 8.2s \u2248 8237 samples"
+        ],
+        [
+          "WARN",
+          "interval jitter CV 44.04 \u2014 unstable timing"
+        ],
+        [
+          "WARN",
+          "3/35 s deviate >50% from median rate (1001/s): t=1787054145s:6261, t=1787054144s:3461, t=1787054137s:0"
+        ],
+        [
+          "WARN",
+          "7/35 s with zero samples"
+        ],
+        [
+          "INFO",
+          "1 blocks at the 2000 cap \u2014 possible receive backlog"
+        ],
+        [
+          "WARN",
+          "1.00% EEG values are MAD outliers"
+        ],
+        [
+          "INFO",
+          "eeg_fit_fitted=False (alignment fit missing)"
+        ]
+      ],
+      "blocks": {
+        "n": 34,
+        "breaks": 0,
+        "lost_samples": 0,
+        "blocks_at_max_size": 1,
+        "recv_rate": 1.0007492386254528
+      },
+      "eeg_data": {
+        "shape": [
+          35000,
+          133
+        ],
+        "n_nan": 0,
+        "dead_channels": [],
+        "n_dead_channels": 0,
+        "outlier_fraction": 0.009958539205155747,
+        "range": [
+          -207347.5625,
+          89614.0546875
+        ]
+      },
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "emg": {
+      "files": [
+        "emg.log"
+      ],
+      "findings": [
+        [
+          "WARN",
+          "no data files (leftover dir or recorder failed to save)"
+        ]
+      ],
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "emg_left": {
+      "files": [
+        "emg_left.log",
+        "emg_left.npz"
+      ],
+      "streams": {
+        "combined": {
+          "n": 11023,
+          "findings": [
+            [
+              "WARN",
+              "9447 duplicate timestamps"
+            ],
+            [
+              "WARN",
+              "1 jump(s) > 3x median interval, largest 0.046s"
+            ]
+          ],
+          "t0": 1787054145.5333233,
+          "t1": 1787054169.781786,
+          "duration": 24.248462677001953,
+          "rate": 454.5442796443187,
+          "interval_median": 0.01537179946899414,
+          "interval_cv": 0.14756595988921659,
+          "mean_rate": 65.05419238762912,
+          "missing_segments": [],
+          "per_sec_min": 356,
+          "per_sec_max": 2422,
+          "per_sec_avg": 447.375,
+          "per_sec_std": 411.75415526136464,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "level": "WARN"
+        },
+        "emg": {
+          "n": 7627,
+          "rate": 314.5354038148447,
+          "findings": [
+            [
+              "WARN",
+              "3396 SN gap event(s), 3433 frames dropped total, max gap 39"
+            ]
+          ],
+          "sn_gap_events": 3396,
+          "sn_dropped": 3433,
+          "sn_max_gap": 39
+        },
+        "imu": {
+          "n": 3396,
+          "rate": 140.05011555725878,
+          "findings": [
+            [
+              "WARN",
+              "3395 SN gap event(s), 7661 frames dropped total, max gap 40"
+            ]
+          ],
+          "sn_gap_events": 3395,
+          "sn_dropped": 7661,
+          "sn_max_gap": 40
+        }
+      },
+      "findings": [
+        [
+          "WARN",
+          "9447 duplicate timestamps"
+        ],
+        [
+          "WARN",
+          "1 jump(s) > 3x median interval, largest 0.046s"
+        ],
+        [
+          "WARN",
+          "1.16% EMG values are MAD outliers (worst ch2 12.69%) \u2014 possible parse corruption"
+        ],
+        [
+          "WARN",
+          "IMU gyro: 21.90% MAD outliers"
+        ]
+      ],
+      "emg_data": {
+        "shape": [
+          7627,
+          8
+        ],
+        "range": [
+          -8081153.0,
+          321520.0
+        ],
+        "outlier_fraction": 0.011554346400944014,
+        "outlier_n": 705,
+        "worst_ch": "ch2",
+        "dead_channels": []
+      },
+      "imu_gyro": {
+        "range": [
+          -2.683199882507324,
+          1.7807999849319458
+        ],
+        "outlier_fraction": 0.21898311739301138
+      },
+      "imu_accel": {
+        "range": [
+          -9.947392463684082,
+          10.787301063537598
+        ],
+        "outlier_fraction": 0.0
+      },
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "emg_right": {
+      "files": [
+        "emg_right.log",
+        "emg_right.npz"
+      ],
+      "streams": {
+        "combined": {
+          "n": 10149,
+          "findings": [
+            [
+              "WARN",
+              "8844 duplicate timestamps"
+            ],
+            [
+              "WARN",
+              "26 jump(s) > 3x median interval, largest 0.077s, 0.077s, 0.062s"
+            ],
+            [
+              "WARN",
+              "interval jitter CV 0.57 \u2014 unstable timing"
+            ]
+          ],
+          "t0": 1787054145.5333233,
+          "t1": 1787054169.781786,
+          "duration": 24.248462677001953,
+          "rate": 418.5007575603834,
+          "interval_median": 0.015392541885375977,
+          "interval_cv": 0.5716505578108297,
+          "mean_rate": 64.96652777992907,
+          "missing_segments": [],
+          "per_sec_min": 234,
+          "per_sec_max": 2381,
+          "per_sec_avg": 410.625,
+          "per_sec_std": 414.42508495706034,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "level": "WARN"
+        },
+        "emg": {
+          "n": 7026,
+          "rate": 289.7503274161661,
+          "findings": [
+            [
+              "WARN",
+              "3121 SN gap event(s), 3997 frames dropped total, max gap 118"
+            ]
+          ],
+          "sn_gap_events": 3121,
+          "sn_dropped": 3997,
+          "sn_max_gap": 118
+        },
+        "imu": {
+          "n": 3123,
+          "rate": 128.7916698720021,
+          "findings": [
+            [
+              "WARN",
+              "3122 SN gap event(s), 8154 frames dropped total, max gap 122"
+            ]
+          ],
+          "sn_gap_events": 3122,
+          "sn_dropped": 8154,
+          "sn_max_gap": 122
+        }
+      },
+      "findings": [
+        [
+          "WARN",
+          "8844 duplicate timestamps"
+        ],
+        [
+          "WARN",
+          "26 jump(s) > 3x median interval, largest 0.077s, 0.077s, 0.062s"
+        ],
+        [
+          "WARN",
+          "interval jitter CV 0.57 \u2014 unstable timing"
+        ],
+        [
+          "WARN",
+          "IMU gyro: 20.86% MAD outliers"
+        ]
+      ],
+      "emg_data": {
+        "shape": [
+          7026,
+          8
+        ],
+        "range": [
+          -2960709.0,
+          -4656.0
+        ],
+        "outlier_fraction": 1.779106177056647e-05,
+        "outlier_n": 1,
+        "worst_ch": "ch7",
+        "dead_channels": []
+      },
+      "imu_gyro": {
+        "range": [
+          -1.4855999946594238,
+          0.8676000237464905
+        ],
+        "outlier_fraction": 0.20856014515956878
+      },
+      "imu_accel": {
+        "range": [
+          -7.735531806945801,
+          0.42862260341644287
+        ],
+        "outlier_fraction": 0.0
+      },
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "eye": {
+      "files": [
+        "eye.log",
+        "eye.mp4",
+        "eye.npz",
+        "gaze_timestamps.txt",
+        "imu_timestamps.txt",
+        "scene_timestamps.txt"
+      ],
+      "streams": {
+        "gaze": {
+          "n": 3996,
+          "findings": [],
+          "t0": 1787054150.919959,
+          "t1": 1787054170.9131389,
+          "duration": 19.99317979812622,
+          "rate": 199.81814000264305,
+          "interval_median": 0.005000114440917969,
+          "interval_cv": 0.005804665042291367,
+          "mean_rate": 199.99542246805265,
+          "missing_segments": [],
+          "per_sec_min": 16,
+          "per_sec_max": 200,
+          "per_sec_avg": 190.65,
+          "per_sec_std": 40.06903417852744,
+          "empty_seconds": 0,
+          "n_seconds": 20,
+          "level": "INFO"
+        },
+        "scene": {
+          "n": 581,
+          "findings": [],
+          "t0": 1787054151.473953,
+          "t1": 1787054170.812259,
+          "duration": 19.338305950164795,
+          "rate": 29.992285854545464,
+          "interval_median": 0.03334450721740723,
+          "interval_cv": 0.0010326453825892812,
+          "mean_rate": 29.98994687430733,
+          "missing_segments": [],
+          "per_sec_min": 16,
+          "per_sec_max": 30,
+          "per_sec_avg": 29.263157894736842,
+          "per_sec_std": 3.1261562957721045,
+          "empty_seconds": 0,
+          "n_seconds": 19,
+          "expected_rate": 30.0,
+          "level": "INFO"
+        },
+        "imu": {
+          "n": 2316,
+          "findings": [],
+          "t0": 1787054150.4431186,
+          "t1": 1787054170.9151306,
+          "duration": 20.472012042999268,
+          "rate": 113.08121522875184,
+          "interval_median": 0.00801396369934082,
+          "interval_cv": 0.15344770566206423,
+          "mean_rate": 124.78219736411508,
+          "missing_segments": [],
+          "per_sec_min": 64,
+          "per_sec_max": 114,
+          "per_sec_avg": 110.6,
+          "per_sec_std": 10.692988356862644,
+          "empty_seconds": 0,
+          "n_seconds": 20,
+          "level": "INFO"
+        }
+      },
+      "findings": [],
+      "gaze_bounds": {
+        "range": [
+          255.60226440429688,
+          1179.553955078125
+        ],
+        "n_out_of_bounds": 0
+      },
+      "video": {
+        "file": "eye.mp4",
+        "findings": [],
+        "n_frames": 581,
+        "n_meta_frames": 581,
+        "fps_meta": 30.0,
+        "duration": 19.366666666666667,
+        "n_ts": 581,
+        "mean_luminance": 150.01991497061965,
+        "frozen_runs": [],
+        "black_runs": [],
+        "frozen_fraction": 0.0,
+        "black_fraction": 0.0,
+        "level": "INFO"
+      },
+      "log_errors": [],
+      "level": "INFO"
+    },
+    "hand_pose": {
+      "files": [
+        "hand_pose.log",
+        "hand_pose.npz"
+      ],
+      "streams": {
+        "samples": {
+          "n": 115700,
+          "findings": [
+            [
+              "WARN",
+              "70038 duplicate timestamps"
+            ],
+            [
+              "WARN",
+              "1 jump(s) > 3x median interval, largest 0.002s"
+            ],
+            [
+              "WARN",
+              "1/24 s deviate >50% from median rate (4586/s): t=1787054146s:7134, t=1787054145s:3193, t=1787054147s:5020"
+            ]
+          ],
+          "t0": 1787054145.5333233,
+          "t1": 1787054169.789268,
+          "duration": 24.25594472885132,
+          "rate": 4769.92346797284,
+          "interval_median": 0.0005257129669189453,
+          "interval_cv": 0.052606953964208496,
+          "mean_rate": 1902.1786848072563,
+          "missing_segments": [],
+          "per_sec_min": 3193,
+          "per_sec_max": 7134,
+          "per_sec_avg": 4665.5,
+          "per_sec_std": 602.7921145248446,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "level": "WARN"
+        }
+      },
+      "findings": [
+        [
+          "WARN",
+          "70038 duplicate timestamps"
+        ],
+        [
+          "WARN",
+          "1 jump(s) > 3x median interval, largest 0.002s"
+        ],
+        [
+          "WARN",
+          "1/24 s deviate >50% from median rate (4586/s): t=1787054146s:7134, t=1787054145s:3193, t=1787054147s:5020"
+        ]
+      ],
+      "ergo": {
+        "range": [
+          -44.12213897705078,
+          66.0310287475586
+        ],
+        "outlier_fraction": 0.0
+      },
+      "skeleton": {
+        "shape": [
+          115700,
+          50,
+          3
+        ],
+        "nan_fraction": 0.0,
+        "n_jumps": 0
+      },
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "marker": {
+      "files": [
+        "marker.log",
+        "marker.npz"
+      ],
+      "findings": [],
+      "n_markers": 12,
+      "marker_span_s": 20.20569658279419,
+      "tags": [
+        "RUN_START",
+        "SCENE_ID",
+        "FIX_ON",
+        "TASK_ID",
+        "INSTR_ON",
+        "FIX_OFF",
+        "INSTR_OFF",
+        "IMG_START",
+        "IMG_END",
+        "EXEC_START",
+        "EXEC_END",
+        "RUN_END"
+      ],
+      "log_errors": [],
+      "level": "INFO"
+    },
+    "markers": {
+      "files": [
+        "markers.log"
+      ],
+      "findings": [
+        [
+          "WARN",
+          "no data files (leftover dir or recorder failed to save)"
+        ]
+      ],
+      "log_errors": [],
+      "level": "WARN"
+    },
+    "position": {
+      "files": [
+        "position.log",
+        "position.npz"
+      ],
+      "streams": {
+        "combined": {
+          "n": 485620,
+          "findings": [
+            [
+              "WARN",
+              "440059 duplicate timestamps"
+            ],
+            [
+              "WARN",
+              "19 jump(s) > 3x median interval, largest 0.007s, 0.006s, 0.005s"
+            ]
+          ],
+          "t0": 1787054145.5333233,
+          "t1": 1787054169.7897902,
+          "duration": 24.25646686553955,
+          "rate": 20020.186892506783,
+          "interval_median": 0.0005257129669189453,
+          "interval_cv": 0.13315815263698721,
+          "mean_rate": 1902.1786848072563,
+          "missing_segments": [],
+          "per_sec_min": 9924,
+          "per_sec_max": 21179,
+          "per_sec_avg": 19616.25,
+          "per_sec_std": 2096.879968945926,
+          "empty_seconds": 0,
+          "n_seconds": 24,
+          "level": "WARN"
+        }
+      },
+      "findings": [
+        [
+          "WARN",
+          "440059 duplicate timestamps"
+        ],
+        [
+          "WARN",
+          "19 jump(s) > 3x median interval, largest 0.007s, 0.006s, 0.005s"
+        ],
+        [
+          "WARN",
+          "61-BH3700181: 1 tracking gap(s) > 0.5s, longest 5.3s"
+        ]
+      ],
+      "devices": [
+        {
+          "name": "61-BH3702202",
+          "findings": [],
+          "valid_fraction": 1.0,
+          "n_teleports": 0
+        },
+        {
+          "name": "61-BH3700181",
+          "findings": [
+            [
+              "WARN",
+              "1 tracking gap(s) > 0.5s, longest 5.3s"
+            ]
+          ],
+          "valid_fraction": 0.9792162596268688,
+          "n_gaps": 1,
+          "n_teleports": 0
+        },
+        {
+          "name": "61-BH3702186",
+          "findings": [],
+          "valid_fraction": 1.0,
+          "n_teleports": 0
+        }
+      ],
+      "log_errors": [],
+      "level": "WARN"
+    }
+  },
+  "empty_dirs": [],
+  "session": {
+    "t0": 1787054134.3041277,
+    "t1": 1787054170.9151306,
+    "duration": 36.611002922058105,
+    "timeline": [
+      {
+        "name": "cam_head",
+        "t0": 1787054145.5333233,
+        "t1": 1787054169.7712724,
+        "duration": 24.23794913291931,
+        "offset": 11.229195594787598,
+        "tail_gap": 1.1438581943511963
+      },
+      {
+        "name": "cam_left_wrist",
+        "t0": 1787054145.5338628,
+        "t1": 1787054169.8100393,
+        "duration": 24.27617645263672,
+        "offset": 11.229735136032104,
+        "tail_gap": 1.1050913333892822
+      },
+      {
+        "name": "cam_right_wrist",
+        "t0": 1787054145.5338628,
+        "t1": 1787054169.7913895,
+        "duration": 24.257526636123657,
+        "offset": 11.229735136032104,
+        "tail_gap": 1.1237411499023438
+      },
+      {
+        "name": "cam_third",
+        "t0": 1787054145.5333233,
+        "t1": 1787054169.782393,
+        "duration": 24.249069690704346,
+        "offset": 11.229195594787598,
+        "tail_gap": 1.132737636566162
+      },
+      {
+        "name": "eeg",
+        "t0": 1787054134.3041277,
+        "t1": 1787054169.2784214,
+        "duration": 34.97429370880127,
+        "offset": 0.0,
+        "tail_gap": 1.636709213256836
+      },
+      {
+        "name": "emg_left",
+        "t0": 1787054145.5333233,
+        "t1": 1787054169.781786,
+        "duration": 24.248462677001953,
+        "offset": 11.229195594787598,
+        "tail_gap": 1.1333446502685547
+      },
+      {
+        "name": "emg_right",
+        "t0": 1787054145.5333233,
+        "t1": 1787054169.781786,
+        "duration": 24.248462677001953,
+        "offset": 11.229195594787598,
+        "tail_gap": 1.1333446502685547
+      },
+      {
+        "name": "eye",
+        "t0": 1787054150.4431186,
+        "t1": 1787054170.9151306,
+        "duration": 20.472012042999268,
+        "offset": 16.138990879058838,
+        "tail_gap": 0.0
+      },
+      {
+        "name": "hand_pose",
+        "t0": 1787054145.5333233,
+        "t1": 1787054169.789268,
+        "duration": 24.25594472885132,
+        "offset": 11.229195594787598,
+        "tail_gap": 1.1258625984191895
+      },
+      {
+        "name": "position",
+        "t0": 1787054145.5333233,
+        "t1": 1787054169.7897902,
+        "duration": 24.25646686553955,
+        "offset": 11.229195594787598,
+        "tail_gap": 1.125340461730957
+      }
+    ]
+  },
+  "level": "WARN"
+}

@@ -1,0 +1,63 @@
+# 采集设备配置：每个 slot 用什么实现、什么参数。
+# kind 对应 recorder_presets.py 里的工厂名；其余键是该工厂的参数。
+# 未列出的参数用代码默认值。hz 是轮询上限：实际低于 hz 时不做任何等待。
+
+recorders:
+  cam_head:
+    kind: depthai_camera
+    hz: 30
+
+  cam_left_wrist:
+    kind: opencv_camera
+    idx: 3            # 左腕相机，USB 集线器左起第二口
+    hz: 30
+
+  cam_right_wrist:
+    kind: opencv_camera
+    idx: 2            # 右腕相机
+    hz: 30
+
+  cam_third:
+    kind: opencv_camera
+    idx: 1
+    hz: 30
+
+  eeg:
+    kind: curry_eeg
+    host: "127.0.0.1"
+    port: 4455
+    hz: 1000
+
+  emg_left:
+    kind: weili_emg
+    port: "COM9"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
+    baud: 921600
+    hz: 1000
+
+  emg_right:
+    kind: weili_emg
+    port: "COM10"
+    baud: 921600
+    hz: 1000
+
+  eye:
+    kind: neon_eye_async
+    hz: 1000
+    open_timeout: 120     # 内部预热最坏 ~90s(发现设备 10s + 传感器 10s + 三路首帧 3x20s);
+                          # 默认 30s 看门狗会在正常冷启动时误判超时
+
+  hand_pose:
+    kind: manus_hand_pose
+    hz: 1000
+    open_timeout: 60      # landscape 15s + 等两只手套配对 + 首份数据 10s,默认 30s 不够
+
+  position:
+    kind: openvr_position
+    device_classes: tracker
+    hz: 1000
+
+  marker:
+    kind: udp_marker
+    host: "127.0.0.1"
+    port: 9999
+    hz: 30
