@@ -354,6 +354,7 @@ def record_one(session_root: Path, task: dict, args) -> tuple[Path, int]:
     print(f"  任务 #{task_id}  {task.get('task_name', '')}")
     print(f"  录制目录: {run_dir}")
     print(f"{'─' * 68}")
+    input("按任意键开始采集...")
 
     if args.dummy:
         recs = get_dummy_recorders(session_dir=str(run_dir),
