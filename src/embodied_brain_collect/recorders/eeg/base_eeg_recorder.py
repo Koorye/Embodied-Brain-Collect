@@ -157,6 +157,10 @@ def _fit_eeg_to_pc(eeg_t_s: np.ndarray, marker_t_pc: np.ndarray) -> dict:
 class BaseEegRecorder(BaseRecorder):
     name = "eeg"
     output_dir = "eeg"
+    # Curry/dummy/Intan 的 eeg_data 最后一列是 Trigger(数字输入字);Blackrock
+    # 的事件走独立的数字输入包,数据里没有 Trigger 列 —— eeg_n_eeg_channels
+    # 据此决定减不减一。
+    _has_trigger_channel: bool = True
 
     def __init__(self, config):
         super().__init__(config)
@@ -186,6 +190,27 @@ class BaseEegRecorder(BaseRecorder):
     def _on_event(self, code: int, latency: int) -> None:
         self._acc("eeg_event_code", code)
         self._acc("eeg_event_latency", latency)
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def _setup(self) -> None:
+        """统一开录时刻(launcher 的 go 之后)才调用:清掉 open 首帧闸门与
+        ready 等待期漏进来的数据 —— 否则开得快的 recorder(如 Blackrock 的
+        SDK 回调)会把等待慢 recorder 的几秒也录进去,各流起点参差。"""
+        super()._setup()
+        self._blocks.clear()
+        self._total_samples = 0
+        for key in ("eeg_block_start", "eeg_block_n",
+                    "eeg_event_code", "eeg_event_latency",
+                    "eeg_dig_event_ts", "eeg_dig_event_word",
+                    "eeg_dig_event_chid"):
+            self._buf.pop(key, None)
+        self._reset_stream_state()
+
+    def _reset_stream_state(self) -> None:
+        """子类重置各自的流锚点(时间戳原点/索引跟踪器),配合 _setup 清缓冲。"""
 
     # ------------------------------------------------------------------
     # Alignment (runs in _close, before _save)
@@ -309,7 +334,8 @@ class BaseEegRecorder(BaseRecorder):
         out["eeg_channel_names"] = np.asarray(self._channel_labels)
         out["eeg_n_samples"] = np.asarray(self._total_samples)
         out["eeg_n_channels"] = np.asarray(n_ch)
-        out["eeg_n_eeg_channels"] = np.asarray(max(0, n_ch - 1))
+        out["eeg_n_eeg_channels"] = np.asarray(
+            max(0, n_ch - 1) if self._has_trigger_channel else n_ch)
         out["eeg_start_amp_sample"] = np.asarray(
             self._buf["eeg_block_start"][0]
             if self._buf.get("eeg_block_start") else 0)

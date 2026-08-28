@@ -20,7 +20,7 @@ _DUMMY_CHANNELS = 8
 _DUMMY_BLOCK_S = 0.04            # 10 samples per block
 _DUMMY_EVENT_S = 1.0             # 与 dummy marker 同节奏
 
-from ...stim.marker_codes import (DUMMY_TRIAL_CODES, RUN_END,   # noqa: E402
+from ...stim.marker_codes import (DUMMY_TRIAL_CODES, P1_RUN_END,   # noqa: E402
                                   RUN_START)
 
 
@@ -76,10 +76,18 @@ class DummyEegRecorder(BaseEegRecorder):
         # 只按时刻排序:同刻事件保持构造顺序(码值不参与排序)
         return sorted(events, key=lambda e: e[0])
 
+    def _reset_stream_state(self) -> None:
+        # 统一开录后从样本 0 / 事件表头重新开始
+        self._amp_index = 0
+        self._t_start = None
+        self._last_event = None
+        self._event_i = 0
+        self._schedule_i = 0
+
     def _close(self) -> None:
-        # 收尾事件:与 dummy marker 的 RUN_END 同码,保证两端序列配对完整
+        # 收尾事件:与 stim 的 P1_RUN_END 同码,保证两端序列配对完整
         if self._amp_index > 0:
-            self._on_event(RUN_END, self._amp_index - 1)
+            self._on_event(P1_RUN_END, self._amp_index - 1)
         self._log(f"[eeg:dummy] stopped (samples={self._total_samples}, "
                   f"events={len(self._buf.get('eeg_event_code', []))})")
         super()._close()

@@ -126,10 +126,8 @@ def get_realsense_camera(session_dir: str, duration: float = 0.0,
 # ---- Eye -----------------------------------------------------------------
 
 from embodied_brain_collect.recorders.eye import (
-    DummyEyeRecorder, EyeRecorderConfig,
+    DummyEyeRecorder, NeonEyeRecorder, EyeRecorderConfig, NeonEyeAsyncRecorder,
 )
-# Neon 的两个 recorder 顶层 import pupil_labs SDK —— 延迟到工厂内导入,
-# 没装该 SDK 的机器(开发机/部分部署)仍可用其余模态。
 
 
 def get_dummy_eye(session_dir: str, duration: float = 0.0,
@@ -144,7 +142,6 @@ def get_neon_eye(session_dir: str, duration: float = 0.0,
                  crf: int = 23, preset: str = "medium",
                  open_timeout: float = 30.0, hz: float = 1000.0) -> BaseRecorder:
     """Neon via the simple (synchronous) API — device auto-discovered."""
-    from embodied_brain_collect.recorders.eye import NeonEyeRecorder
     return NeonEyeRecorder(EyeRecorderConfig(
         session_dir=session_dir, duration=duration,
         no_scene_video=no_scene_video, crf=crf, preset=preset,
@@ -156,7 +153,6 @@ def get_neon_eye_async(session_dir: str, duration: float = 0.0,
                        crf: int = 23, preset: str = "medium",
                        open_timeout: float = 30.0, hz: float = 1000.0) -> BaseRecorder:
     """Neon via the async full-rate API — device auto-discovered."""
-    from embodied_brain_collect.recorders.eye import NeonEyeAsyncRecorder
     return NeonEyeAsyncRecorder(EyeRecorderConfig(
         session_dir=session_dir, duration=duration,
         no_scene_video=no_scene_video, crf=crf, preset=preset,
@@ -166,9 +162,8 @@ def get_neon_eye_async(session_dir: str, duration: float = 0.0,
 # ---- Position -----------------------------------------------------------
 
 from embodied_brain_collect.recorders.position import (
-    DummyPositionRecorder, PositionRecorderConfig,
+    DummyPositionRecorder, OpenvrPositionRecorder, PositionRecorderConfig,
 )
-# OpenVR recorder 顶层 import openvr SDK —— 延迟到工厂内导入,理由同 eye。
 
 
 def get_dummy_position(session_dir: str, duration: float = 0.0,
@@ -181,7 +176,6 @@ def get_dummy_position(session_dir: str, duration: float = 0.0,
 def get_openvr_position(session_dir: str, duration: float = 0.0,
                         device_classes: str = "tracker",
                         open_timeout: float = 30.0, hz: float = 1000.0) -> BaseRecorder:
-    from embodied_brain_collect.recorders.position import OpenvrPositionRecorder
     return OpenvrPositionRecorder(PositionRecorderConfig(
         session_dir=session_dir, duration=duration,
         device_classes=device_classes, open_timeout=open_timeout, hz=hz))
@@ -206,7 +200,8 @@ def get_udp_marker(session_dir: str, duration: float = 0.0,
 # ---- EEG ----------------------------------------------------------------
 
 from embodied_brain_collect.recorders.eeg import (
-    DummyEegRecorder, CurryEegRecorder, EegRecorderConfig,
+    DummyEegRecorder, CurryEegRecorder, BlackrockEegRecorder, IntanEegRecorder,
+    EegRecorderConfig, BlackrockEegRecorderConfig, IntanEegRecorderConfig,
 )
 
 
@@ -220,14 +215,50 @@ def get_dummy_eeg(session_dir: str, duration: float = 0.0,
 
 def get_curry_eeg(session_dir: str, duration: float = 0.0,
                   host: str = "127.0.0.1", port: int = 4455,
-                  open_timeout: float = 30.0, hz: float = 1000.0,
-                  marker_wait_s: float = 10.0) -> BaseRecorder:
+                  open_timeout: float = 30.0, hz: float = 1000.0) -> BaseRecorder:
     """Neuroscan Curry NetStream EEG (alignment runs in the recorder's
     close, against markers/markers.npz)."""
     return CurryEegRecorder(EegRecorderConfig(
         session_dir=session_dir, duration=duration,
-        host=host, port=port, open_timeout=open_timeout, hz=hz,
-        marker_wait_s=marker_wait_s))
+        host=host, port=port, open_timeout=open_timeout, hz=hz))
+
+
+def get_blackrock_eeg(session_dir: str, duration: float = 0.0,
+                      device_type: str = "LEGACY_NSP",
+                      sample_group: int = 0, auto_enable_group: int = 0,
+                      digital_mask: int = 0xFFFF,
+                      open_timeout: float = 30.0, hz: float = 1000.0,
+                      ) -> BaseRecorder:
+    """Blackrock Cerebus/NeuroPort via pycbsdk (pip install pycbsdk).
+    连接走 cbSDK 自动发现(NSP 默认子网或本机 Central);TTL 接 NSP 数字
+    输入口,对齐在 close 时对着 marker npz 拟合。digital_mask 剥数字口
+    空闲基线(实测 NSP 口空闲 0xF988 → mask=0x0077)。"""
+    return BlackrockEegRecorder(BlackrockEegRecorderConfig(
+        session_dir=session_dir, duration=duration,
+        device_type=device_type, sample_group=sample_group,
+        auto_enable_group=auto_enable_group, digital_mask=digital_mask,
+        open_timeout=open_timeout, hz=hz))
+
+
+def get_intan_eeg(session_dir: str, duration: float = 0.0,
+                  host: str = "127.0.0.1",
+                  command_port: int = 5000, data_port: int = 5001,
+                  ports: str = "A", channels_per_port: int = 32,
+                  channels: str = "", digital_in: int = 1,
+                  digital_mask: int = 0xFFFF, digital_map: dict | None = None,
+                  set_runmode: bool = True, start_data_server: bool = True,
+                  open_timeout: float = 30.0, hz: float = 1000.0,
+                  ) -> BaseRecorder:
+    """Intan RHD/RHS via RHX 软件的 TCP 接口(需在 RHX 设置里启用 TCP
+    Command Interface);TTL/marker 走 DIGITAL-IN 字,随帧进流。"""
+    return IntanEegRecorder(IntanEegRecorderConfig(
+        session_dir=session_dir, duration=duration,
+        host=host, command_port=command_port, data_port=data_port,
+        ports=ports, channels_per_port=channels_per_port, channels=channels,
+        digital_in=digital_in, digital_mask=digital_mask,
+        digital_map=digital_map,
+        set_runmode=set_runmode, start_data_server=start_data_server,
+        open_timeout=open_timeout, hz=hz))
 
 
 # ---- Tactile ------------------------------------------------------------
@@ -300,6 +331,8 @@ FACTORY_BY_KIND = {
     "opencv_camera":    get_opencv_camera,
     "realsense_camera": get_realsense_camera,
     "curry_eeg":        get_curry_eeg,
+    "blackrock_eeg":    get_blackrock_eeg,
+    "intan_eeg":        get_intan_eeg,
     "weili_emg":        get_weili_emg,
     "neon_eye":         get_neon_eye,
     "neon_eye_async":   get_neon_eye_async,
