@@ -99,8 +99,8 @@ Windows 采集机用仓库 third_party 自带的 exe，见第 2 步）。
 ### 1. Python 环境
 
 ```bash
-conda create -n Embodied-Brain-Collect python=3.10
-conda activate Embodied-Brain-Collect
+conda create -n collect python=3.10
+conda activate collect
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -111,13 +111,9 @@ pip install -e .
 
 ### 2. third_party（第三方二进制，不入 git）
 
-仓库不含闭源 SDK 与 Windows 二进制。从 GitHub **Release** 下载
-`third_party.tar.gz` 附件，解压到**仓库根**（解压后得到 `third_party/`；
-附件名以实际 Release 为准）：
-
-```bash
-curl -L https://github.com/Koorye/Embodied-Brain-Collect/releases/latest/download/third_party.tar.gz | tar xz
-```
+仓库不含闭源 SDK 与 Windows 二进制。到 GitHub **Release** 页手动下载
+`third_party.zip` 附件，解压到**仓库根**——确保解压后 `third_party/`
+位于本仓库目录下（与 `src/`、`scripts/` 同级）即可。
 
 | 内容 | 用途 |
 |---|---|
@@ -133,12 +129,13 @@ pip install -e third_party/manus_glove
 
 ### 4. 数据打包（可选，打包机需要）
 
-还需要姊妹项目 **Embodied-Brain-Dataset** 的 `mf_lerobot` 包（私有仓库，
-地址向管理员索取）：克隆到与本仓库**同级的目录**，editable 安装：
+还需要姊妹项目
+[Multi-Frequency-LeRobot](https://github.com/Koorye/Multi-Frequency-LeRobot)
+的 `mf_lerobot` 包：克隆到与本仓库**同级的目录**，editable 安装：
 
 ```bash
-git clone <Embodied-Brain-Dataset 仓库地址> ../Embodied-Brain-Dataset
-pip install -e ../Embodied-Brain-Dataset
+git clone https://github.com/Koorye/Multi-Frequency-LeRobot.git ../Multi-Frequency-LeRobot
+pip install -e ../Multi-Frequency-LeRobot
 python -m pip install lerobot==0.3.3
 ```
 
@@ -210,7 +207,7 @@ flowchart TD
 ### 1. 开班前检查
 
 ```bash
-conda activate Embodied-Brain-Collect
+conda activate collect
 
 # 全部传感器预检:逐个打开 + 确认数据在流,失败会给出分设备排查建议
 python scripts/preflight.py

@@ -13,10 +13,10 @@ Usage::
 个数据集。会话目录里有 ``qc_report.json``(``scripts/qc.py`` 产出)时,
 整体等级为 ERROR 的会话直接排除;特征集取各会话全部模态的并集,缺任一
 模态的会话整体剔除(而不是把该模态从数据集中去掉)。依赖 conda 环境
-Embodied-Brain-Collect 里已安装的 ``mf_lerobot`` 包(Multi-Frequency
+collect 里已安装的 ``mf_lerobot`` 包(Multi-Frequency
 LeRobot 扩展,每传感器独立 parquet)。
 
-流 → 特征映射(在 Embodied-Brain-Dataset 的 convert_session_night 基础上
+流 → 特征映射(在 Multi-Frequency-LeRobot 的 convert_session_night 基础上
 新增 wristband,并按槽位目录自动发现视频流):
 
 ============================  ==================================  =====================

@@ -84,7 +84,7 @@
 
 * 新增 `scripts/pack_daily.py`:按日期把班次根(如 data/session-day、
   data/session-night)下的会话打包成 **mf-lerobot 多频率数据集**
-  (基于 Embodied-Brain-Dataset 的 `mf_lerobot` 包)——每会话一个 episode,
+  (基于姊妹项目 Multi-Frequency-LeRobot 的 `mf_lerobot` 包)——每会话一个 episode,
   各传感器保持原生采样率独立存储,读取时按时间窗对齐。
 * 视频用 **ffmpeg 直通截段**:不经逐帧解码/PNG 中间态,按 episode 窗口
   截段并归一化 30fps;**内容锚定**校正 CFR 重复帧导致的截段偏移
@@ -100,7 +100,8 @@
 * 配置装载迁移:`config/load.py` → `session/config.py`;可选 SDK
   (openvr/depthai/pyrealsense2/pupil_labs/pycbsdk/serial)全部懒加载,
   装哪个 SDK 用哪个 recorder,缺 SDK 不再拖垮整体导入。
-* `mf_lerobot` 为姊妹项目 Embodied-Brain-Dataset 的 editable 依赖
+* `mf_lerobot` 为姊妹项目 Multi-Frequency-LeRobot(github.com/Koorye/
+  Multi-Frequency-LeRobot)的 editable 依赖
   (打包功能所需)。
 
 ### EMG 时间戳拟合更抗失败
