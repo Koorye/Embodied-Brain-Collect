@@ -926,6 +926,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "night → --source data/session-night(默认 data/)")
     p.add_argument("--date", default=None,
                    help="日期 YYYY-MM-DD(默认当天)")
+    p.add_argument("--session-dir", type=Path, default=None,
+                   help="批次根目录(等价 --source;--out 未指定时自动为 "
+                        "data/lerobot/<目录名>/<日期>-起-止)")
     p.add_argument("--source", type=Path, default=None,
                    help="批次根目录覆盖(默认 data/;day/night 预设则 "
                         "data/session-<shift>)")
@@ -949,14 +952,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         dt.date.fromisoformat(args.date)
     except ValueError:
         p.error(f"无效日期: {args.date!r} (应为 YYYY-MM-DD)")
+    if args.session_dir is not None:
+        if args.shift:
+            p.error("--session-dir 与 day/night 预设只能二选一")
+        if args.source is not None:
+            p.error("--source 与 --session-dir 只能二选一")
+        args.source = args.session_dir
     if args.source is None:
         args.source = (PROJECT_ROOT / "data" / f"session-{args.shift}"
                        if args.shift else PROJECT_ROOT / "data")
     if args.out is None:
-        args.out = (PROJECT_ROOT / "data" / "lerobot" / args.date
-                    if not args.shift else
-                    PROJECT_ROOT / "data" / "lerobot"
-                    / f"session-{args.shift}" / args.date)
+        if args.shift:
+            args.out = (PROJECT_ROOT / "data" / "lerobot"
+                        / f"session-{args.shift}" / args.date)
+        elif args.source != PROJECT_ROOT / "data":
+            # 指定了批次根(--source/--session-dir):输出按其目录名归档
+            args.out = (PROJECT_ROOT / "data" / "lerobot"
+                        / args.source.name / args.date)
+        else:
+            args.out = PROJECT_ROOT / "data" / "lerobot" / args.date
     return args
 
 
