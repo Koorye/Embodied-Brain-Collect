@@ -1,0 +1,37 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── 虚拟环境 ──
+.venv/
+venv/
+
+# ── IDE / OS ──
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ── 采集与打包产物(会话录制、qc 报告、mf-lerobot 数据集)──
+data/
+*.log
+
+# ── 测试运行产物(dummy session fixtures)──
+tests/**/sessions/
+
+# ── 根目录散落的运行输出 ──
+/log.txt
+/report.json
+/qc_report.json
+
+# ── third_party:闭源 SDK 与 ffmpeg/ffprobe 二进制不入库,经 GitHub
+#    Release 附件分发(单文件 ≤2GB),部署机下载解压到此处 ──
+third_party/
