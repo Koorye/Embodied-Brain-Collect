@@ -3,68 +3,68 @@
 # 未列出的参数用代码默认值。hz 是轮询上限：实际低于 hz 时不做任何等待。
 
 recorders:
-  # cam_head:
-  #   kind: depthai_camera
-  #   name: "Luxonis OAK-D-W-97"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   hz: 30
+  cam_head:
+    kind: depthai_camera
+    name: "Luxonis OAK-D-W-97"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    hz: 30
 
-  # cam_left_wrist:
-  #   kind: opencv_camera
-  #   name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   idx: 3            # 左腕相机，USB 集线器左起第二口
-  #   hz: 30
+  cam_left_wrist:
+    kind: opencv_camera
+    name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    idx: 3            # 左腕相机，USB 集线器左起第二口
+    hz: 30
 
-  # cam_right_wrist:
-  #   kind: opencv_camera
-  #   name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   idx: 2            # 右腕相机
-  #   hz: 30
+  cam_right_wrist:
+    kind: opencv_camera
+    name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    idx: 2            # 右腕相机
+    hz: 30
 
-  # cam_third:
-  #   kind: opencv_camera
-  #   name: "Intel RealSense D455f"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   idx: 1
-  #   hz: 30
+  cam_third:
+    kind: opencv_camera
+    name: "Intel RealSense D455f"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    idx: 1
+    hz: 30
 
-  # eeg:
-  #   kind: curry_eeg
-  #   name: "Compumedics Neuroscan SynAmps2"
-  #   host: "127.0.0.1"
-  #   port: 4455
-  #   hz: 1000
+  eeg:
+    kind: curry_eeg
+    name: "Compumedics Neuroscan SynAmps2"
+    host: "127.0.0.1"
+    port: 4455
+    hz: 1000
 
-  # emg_left:
-  #   kind: weili_emg
-  #   name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   port: "COM31"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
-  #   baud: 921600
-  #   hz: 1000
+  emg_left:
+    kind: weili_emg
+    name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    port: "COM31"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
+    baud: 921600
+    hz: 1000
 
-  # emg_right:
-  #   kind: weili_emg
-  #   name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   port: "COM30"
-  #   baud: 921600
-  #   hz: 1000
+  emg_right:
+    kind: weili_emg
+    name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    port: "COM30"
+    baud: 921600
+    hz: 1000
 
-  # eye:
-  #   kind: neon_eye_async
-  #   name: "Pupil Labs Neon Wearable Eye Tracker"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   hz: 1000
-  #   open_timeout: 120     # 内部预热最坏 ~90s(发现设备 10s + 传感器 10s + 三路首帧 3x20s);
-  #                         # 默认 30s 看门狗会在正常冷启动时误判超时
+  eye:
+    kind: neon_eye_async
+    name: "Pupil Labs Neon Wearable Eye Tracker"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    hz: 1000
+    open_timeout: 120     # 内部预热最坏 ~90s(发现设备 10s + 传感器 10s + 三路首帧 3x20s);
+                          # 默认 30s 看门狗会在正常冷启动时误判超时
 
-  # hand_pose:
-  #   kind: manus_hand_pose
-  #   name: "MANUS Metaglove Pro Haptics"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   hz: 1000
-  #   open_timeout: 60      # landscape 15s + 等两只手套配对 + 首份数据 10s,默认 30s 不够
+  hand_pose:
+    kind: manus_hand_pose
+    name: "MANUS Metaglove Pro Haptics"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    hz: 1000
+    open_timeout: 60      # landscape 15s + 等两只手套配对 + 首份数据 10s,默认 30s 不够
 
-  # position:
-  #   kind: openvr_position
-  #   name: "HTC VIVE Tracker 3.0"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   device_classes: tracker
-  #   hz: 1000
+  position:
+    kind: openvr_position
+    name: "HTC VIVE Tracker 3.0"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    device_classes: tracker
+    hz: 1000
 
   marker:
     kind: udp_marker
@@ -73,13 +73,13 @@ recorders:
     port: 9999
     hz: 30
 
-  wristband:
-    kind: wristband
-    name: "MAIYUAN"              # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    device_name: "THU-PULSE-V3"   # 空 = 按 service UUID 探测;多台同时在附近时用 address 最稳
-    hz: 100
-    open_timeout: 60              # open 重试共享预算:单次尝试 ≈ 扫描10s + 连接~4s + UTC同步~2s,失败后歇 2s 再试
-    open_attempts: 3              # 扫描→连接→对时整体重试次数(含首次);录制中掉线仍然直接报错,不重连
+  # wristband:
+  #   kind: wristband
+  #   name: "MAIYUAN"              # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+  #   device_name: "THU-PULSE-V3"   # 空 = 按 service UUID 探测;多台同时在附近时用 address 最稳
+  #   hz: 100
+  #   open_timeout: 60              # open 重试共享预算:单次尝试 ≈ 扫描10s + 连接~4s + UTC同步~2s,失败后歇 2s 再试
+  #   open_attempts: 3              # 扫描→连接→对时整体重试次数(含首次);录制中掉线仍然直接报错,不重连
 
   # ego_headband:
   #   kind: net_ego_headband

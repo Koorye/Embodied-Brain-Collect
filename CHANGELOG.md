@@ -2,6 +2,55 @@
 
 ## 1.2.1 — 未发布
 
+### meta 附每个 episode 的 qc report,hardware 只列实际槽位(pack_daily)
+
+* 打包结束时把每个 episode 对应源会话的 `qc_report.json` 原文汇总写进
+  数据集 `meta/qc_reports.jsonl`(一行一个 episode:`episode_index`、
+  `session` 源会话名、`level` 整体等级、`qc_report` 报告全文,
+  findings/streams 明细全保留,约 30KB/集),QC 结论随数据走,不用回
+  源目录查。`pack_daily_fast` 同步。
+* `info.json` 的 `hardware` 原来用 `DEFAULT_RECORDER_NAMES` 全表预填,
+  某天没采的模态(如 wristband、ego_headband)也带着默认显示名混进去。
+  改为只列实际出现的槽位(会话里真实存在的槽位目录 ∪ meta.yaml
+  recorders 显式声明),默认表仅作名字回退。已打包的
+  `session-day/2026-09-16-08-57-22-11-10-32` 的 info.json 与
+  qc_reports.jsonl 已就地补齐。
+
+### `scripts/pack_daily_fast.py` — 打包多进程加速版
+
+* 新增 `pack_daily.py` 的加速版,输出数据集一致,用法一致(另加
+  `--workers N` 控制进程池宽,默认 4)。三处并行/省工:
+  - 预扫与特征规格改用 `load_stream_index` 只读时间戳(原版每个会话
+    要把全部 npz **完整解压三遍**:预扫、规格、写帧),并进程池并行;
+    轻量索引抛异常时自动回退整段装载,语义与原版一致;
+  - 全部视频截段(ffmpeg 重编码 + 首帧自验 + 时间戳 parquet)提前提交
+    独立进程池,与主进程 add_frame 写帧循环完全重叠;
+  - 每个会话的流装载在进程池预取(深度 1),与上一会话写帧重叠;
+    去掉逐样本 tqdm,改为每流写完打印样本数。
+* `add_frame` 逐样本 API 决定写帧循环仍在主进程串行;加速来自更轻的
+  预扫 + 视频/流装载与写帧的流水线重叠。已用合成会话对拍:预扫特征集、
+  特征规格、episode 事件序列、截段帧数、输出文件树与原版逐一一致。
+
+### 指定 `--out` 也自动落 `<out>/<日期>-起-止`(pack_daily)
+
+* 原来只有自动命名(`--out` 未指定)才按数据起止时刻追加
+  `<日期>-<起>-<止>`,显式 `--out` 时名字完全固定。现在两种方式统一:
+  显式 `--out` 时数据集自动进一层,落在 `<out>/<日期>-<起>-<止>/`
+  子目录(起止口径不变:优先各会话 qc marker 窗口,缺报告回退目录名
+  时刻);无可解析起止时保持原目录。`pack_daily_fast` 同步。
+
+### 打包主时钟改为独立 30Hz 时间轴(pack_daily)
+
+打包出来的数据集 marker 缺 241(RUN_START)、部分缺 17(FIX_ON):原实现
+用相机首帧(窗口内)做主时钟起点,而 RUN_START 定义窗口起点、恒早于该帧,
+`ts >= t0` 的对齐过滤把它必然切掉;FIX_ON 紧随其后,相机首帧落在它之后
+的会话同样被切。修复:主时钟不再取任何 recorder 的时间戳,由 marker
+窗口直接合成 —— `t_k = RUN_START + k/30`,末帧 `ceil((RUN_END-RUN_START)
+×30)`,保证覆盖 RUN_END;`load_master_frames` 更名 `make_master_timeline`
+(`pack_daily_fast` 同步),无 marker 窗口(--full 或缺 RUN_START/RUN_END)
+回退用相机首末帧界定时长。所有流仍按窗口裁剪后 rebase 到 RUN_START,
+RUN_START 钉在 t=0,起始事件不再丢失。
+
 ### eye 视频完整性修复(视频比时间戳少 1 帧 / 只有 1 帧)
 
 两个症状对应两个缺陷,均在 `recorders/eye/neon_eye_async_recorder.py`:

@@ -284,13 +284,14 @@ python scripts/run_session.py --seed 42 --auto-keep
 `<日期>-*` 会话目录（兼容 `data/<批次根>/<日期>-*` 一层嵌套），输出到
 `data/lerobot/<日期>-<起>-<止>/`——起止取**本次打包会话**的数据时间范围
 （HH-MM-SS，优先各会话 marker 窗口，缺报告时回退目录名时刻）；指定
-`--out` 时名字完全由你定，不再追加。日期可省略（默认当天）：
+`--out` 时数据集同样自动进一层，落在 `<out>/<日期>-<起>-<止>/` 子目录。
+日期可省略（默认当天）：
 
 ```bash
 python scripts/pack_daily.py                          # 打包今天
 python scripts/pack_daily.py --date 2026-09-16        # 打包指定日期
 
-# 指定批次根与输出目录
+# 指定批次根与输出目录(数据集落在 <out>/<日期>-起-止/ 子目录)
 python scripts/pack_daily.py --date 2026-09-16     --source data/session-batch1 --out data/lerobot/batch1
 
 # 其他参数
@@ -308,7 +309,10 @@ python scripts/pack_daily.py --max-episodes 2   # 试打包前 2 个会话
   `observation.state` 与 `action`
 * meta 的 `info.json` 记录 `collect_version`（采集程序版本）与
   `hardware`（每槽位设备显示名；新版 session meta 已有，旧数据回退
-  默认设备表）
+  默认设备表；只列本次实际采集的槽位）
+* meta 的 `qc_reports.jsonl` 逐 episode 附上源会话的 **QC 报告原文**
+  （`session` 源会话名、`level` 整体等级、`qc_report` 含 findings/streams
+  明细），QC 结论随数据集走
 
 输出（LeRobot 标准结构 + 多频率扩展）：
 
@@ -316,6 +320,7 @@ python scripts/pack_daily.py --max-episodes 2   # 试打包前 2 个会话
 data/lerobot/2026-09-15-100029-100521/
 ├── meta/info.json          # fps、特征表、collect_version、hardware
 ├── meta/tasks.jsonl        # 任务列表
+├── meta/qc_reports.jsonl   # 每 episode 的源会话 QC 报告原文
 ├── data/chunk-000/         # 每特征一个 parquet(时间索引)
 │   ├── episode_000000/observation.state.parquet
 │   ├── episode_000000/observation.wristband_ppg.parquet
@@ -394,10 +399,11 @@ flowchart LR
     end
     subgraph PACK["scripts/pack_daily.py"]
         M["marker 窗口<br/>RUN_START..RUN_END"]
+        T["独立 30Hz 主时间轴<br/>RUN_START 为 0 点"]
         A["内容锚定精确截段<br/>(CFR 重复帧校正)"]
     end
     subgraph OUT["mf-lerobot 数据集"]
-        O1["videos/*.mp4<br/>30fps 主时钟"]
+        O1["videos/*.mp4<br/>截段对齐主时间轴"]
         O2["data/*.parquet<br/>每特征独立时间线"]
         O3["meta/info.json"]
     end
@@ -405,16 +411,20 @@ flowchart LR
     V2 --> A --> O1
     W1 --> O2
     P1 --> O2
+    M --> T
     M --> A
+    T --> A
 ```
 
-* **主时钟**：相机 30fps（`cam_head` 优先，自动回退其他视频槽位），
-  `task` 特征按主时钟逐帧记录任务标签
+* **主时钟**：独立 30Hz 时间轴（`t_k = RUN_START + k/30`，末帧覆盖
+  RUN_END），不取任何 recorder 的时间戳；`task` 特征按该时间轴逐帧
+  记录任务标签。无 marker 窗口（`--full` 或缺 RUN_START/RUN_END）时
+  回退用相机首末帧界定时长，同样合成 30Hz 网格
 * **视频截段**：ffmpeg 从源 mp4 直接截出 episode 窗口并归一化到 30fps——
   不经逐帧解码/PNG 中间态；**内容锚定**校正 CFR 重复帧带来的截段偏移
   （每路视频截段后自验，残差 ≤ ±1 帧）
-* **时间戳**：统一 rebase 到 episode 首个主时钟帧（无负值）；腕带用
-  设备 UTC 钟（0x20 同步），EEG 用 marker 拟合对齐到 PC 钟
+* **时间戳**：统一 rebase 到 RUN_START（无负值，RUN_START 自身 t=0）；
+  腕带用设备 UTC 钟（0x20 同步），EEG 用 marker 拟合对齐到 PC 钟
 * 只出现在部分会话的流会整体舍弃（保证 meta 特征集在每个 episode 完整）
 * `--full` 可忽略 marker 窗口保留整段录制
 
@@ -437,6 +447,7 @@ QC 结论不改变录制结果，只供参考。
 |---|---|
 | `scripts/run_session.py` | **主控**：`--mode env/tasks` × `--stim` → 逐项录制+QC → n/r/q → 汇总 |
 | `scripts/pack_daily.py` | **每日数据打包**：按日期把批次根下的会话打包成 mf-lerobot 数据集 |
+| `scripts/pack_daily_fast.py` | 同上的多进程加速版：预扫走轻量索引、视频截段与流装载和写帧流水线重叠，用法一致（另加 `--workers N`，默认 4） |
 | `scripts/session_summary.py` | 现有数据汇总：产量、任务覆盖、质量问题统计 |
 | `scripts/preflight.py` | 预检：逐 recorder 打开 + 数据流探测，输出分设备排查建议 |
 | `scripts/check_cameras.py` | 相机体检：枚举 + 实时画面 |

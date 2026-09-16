@@ -22,7 +22,7 @@ LeRobot 扩展,每传感器独立 parquet)。
 ============================  ==================================  =====================
 source                        feature                              notes
 ============================  ==================================  =====================
-cam_*/frames.mp4              observation.images.<槽位>_rgb        主时钟,30 fps
+cam_*/frames.mp4              observation.images.<槽位>_rgb        30 fps,截段对齐主时间轴
 eye/eye.mp4                   observation.images.eye_scene_rgb
 wristband                     observation.wristband_pressure       3 路,150 Hz(设备钟)
 wristband                     observation.wristband_ppg            3 路,100 Hz
@@ -36,6 +36,7 @@ eye(imu)                      observation.eye_imu                  6 路
 hand_pose                     observation.hand_pose/_skeleton_*    40d / 50x3 / 50x4
 position                      observation.state                    追踪器位姿
 marker                        episode 窗口(RUN_START..RUN_END)
+                              + 独立 30Hz 主时间轴(RUN_START 为 0 点)
 ============================  ==================================  =====================
 """
 
@@ -614,11 +615,20 @@ def load_marker_window(session_dir: Path) -> tuple[float | None, float | None]:
 
 
 def _hardware_names(session_dirs: list[Path]) -> dict[str, str]:
-    """每槽位的设备显示名:新版 session 的 meta.yaml(recorders 字段)优先,
-    旧版缺失的槽位回退 DEFAULT_RECORDER_NAMES 默认表。"""
+    """每槽位的设备显示名,只列实际出现的槽位。
+
+    槽位集合 = 各会话里真实存在的槽位目录 ∪ meta.yaml(recorders 字段)
+    显式声明的槽位;显示名 meta 声明优先,缺失回退 DEFAULT_RECORDER_NAMES。
+    默认表只作名字回退、不再整体预填 —— 某天没采的模态(如 wristband)
+    不会带着默认名混进 info.hardware。
+    """
     import yaml
-    names = dict(DEFAULT_RECORDER_NAMES)
+    declared: dict[str, str] = {}
+    present: set[str] = set()
     for sd in session_dirs:
+        for d in sd.iterdir():
+            if d.is_dir():
+                present.add(d.name)
         p = sd / "meta.yaml"
         if not p.exists():
             continue
@@ -627,7 +637,12 @@ def _hardware_names(session_dirs: list[Path]) -> dict[str, str]:
         except yaml.YAMLError:
             continue
         for slot, label in (meta.get("recorders") or {}).items():
-            names[str(slot)] = str(label)
+            declared[str(slot)] = str(label)
+    names: dict[str, str] = {}
+    for slot in sorted(present | set(declared)):
+        label = declared.get(slot) or DEFAULT_RECORDER_NAMES.get(slot)
+        if label:
+            names[slot] = label
     return names
 
 
@@ -648,8 +663,28 @@ def load_task_label(session_dir: Path, env_mod) -> str:
     return f"session_{session_dir.name}"
 
 
-def load_master_frames(session_dir: Path, video_slots, win) -> np.ndarray | None:
-    """主时钟帧时刻:cam_head 优先,回退到任一视频槽位。"""
+def make_master_timeline(win: tuple[float | None, float | None],
+                         session_dir: Path, video_slots) -> np.ndarray | None:
+    """独立主时间轴:RUN_START 为 0 点、固定 30Hz 网格、覆盖 RUN_END。
+
+    主时钟不取任何 recorder 的时间戳,由 marker 窗口直接合成:
+    ``t_k = RUN_START + k/30``。末帧取 ``ceil((RUN_END-RUN_START)*30)``,
+    保证网格不早于 RUN_END。没有 marker 窗口(--full 或缺 RUN_START/
+    RUN_END)时,回退用相机首末帧界定时长,同样合成 30Hz 网格。
+    """
+    if win[0] is not None and win[1] is not None:
+        t0, t1 = float(win[0]), float(win[1])
+    else:
+        span = _camera_span(session_dir, video_slots)
+        if span is None:
+            return None
+        t0, t1 = span
+    n = int(np.ceil((t1 - t0) * MASTER_FPS)) + 1
+    return t0 + np.arange(n, dtype=np.float64) / MASTER_FPS
+
+
+def _camera_span(session_dir: Path, video_slots) -> tuple[float, float] | None:
+    """回退用相机界定时长:cam_head 优先,取首个有帧槽位的 (首帧, 末帧)。"""
     order = (["cam_head"] if "cam_head" in video_slots else []) + [
         s for s in video_slots if s != "cam_head"]
     for slot in order:
@@ -661,11 +696,8 @@ def load_master_frames(session_dir: Path, video_slots, win) -> np.ndarray | None
             ts = np.load(npz, allow_pickle=True)[ts_key].astype(np.float64)
         except Exception:
             continue
-        ts = ts[_window_mask(ts, win)]
         if len(ts):
-            if slot != "cam_head":
-                print(f"[master] '{session_dir.name}': 无 cam_head,用 '{slot}' 做主时钟")
-            return ts
+            return float(ts[0]), float(ts[-1])
     return None
 
 
@@ -782,6 +814,9 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
 
 def write_episode(ds, session_dir: Path, task_label: str, master_abs: np.ndarray,
                   streams, win, video_slots) -> None:
+    # master_abs 是独立 30Hz 时间轴(make_master_timeline),窗口模式
+    # 下 master_abs[0] 恰为 RUN_START,故 `ts >= t0` 不会切掉起始事件
+    # (RUN_START/FIX_ON 与 RUN_END 一样保留在 episode 内)。
     t0 = float(master_abs[0])
     master_rel = (master_abs - t0).astype(np.float64)
     ep_idx = ds.meta.total_episodes
@@ -915,6 +950,37 @@ def filter_qc_errors(sessions: list[Path]) -> list[Path]:
     return kept
 
 
+def write_qc_meta(out: Path, sessions: list[dict]) -> None:
+    """把每个 episode 对应源会话的 qc_report.json 汇总进 meta/qc_reports.jsonl。
+
+    一行一个 episode,episode_index 与数据集一致:``session`` 为源会话
+    目录名,``level`` 为报告整体等级(无报告为 null),``qc_report`` 是
+    报告原文(findings/streams 明细全保留)。数据集的 QC 结论随数据走,
+    不用再回源目录查。
+    """
+    lines = []
+    for i, info in enumerate(sessions):
+        p = info["dir"] / "qc_report.json"
+        report = None
+        if p.exists():
+            try:
+                report = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                report = None
+        lines.append(json.dumps({
+            "episode_index": i,
+            "session": info["dir"].name,
+            "level": str(report["level"]).upper() if report else None,
+            "qc_report": report,
+        }, ensure_ascii=False))
+    meta = out / "meta"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "qc_reports.jsonl").write_text("\n".join(lines) + "\n",
+                                           encoding="utf-8")
+    n_with = sum(1 for l in lines if json.loads(l)["qc_report"] is not None)
+    print(f"[meta] qc_reports.jsonl: {n_with}/{len(lines)} 个 episode 有报告")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
@@ -934,7 +1000,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "data/session-<shift>)")
     p.add_argument("--out", type=Path, default=None,
                    help="输出数据集目录(默认 data/lerobot/<日期>;预设为 "
-                        "data/lerobot/session-<shift>/<日期>)")
+                        "data/lerobot/session-<shift>/<日期>);最终数据集"
+                        "自动落在 <out>/<日期>-起-止 子目录")
     p.add_argument("--force", action="store_true",
                    help="输出目录已存在时先删除")
     p.add_argument("--full", action="store_true",
@@ -944,7 +1011,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max-episodes", type=int, default=None,
                    help="只转换前 N 个会话(调试用)")
     args = p.parse_args(argv)
-    args.out_auto = args.out is None     # 自动命名 → 追加数据起止时刻
+    args.out_auto = args.out is None     # 自动命名 → 原地追加数据起止时刻;
+                                         # 指定 --out → 进一层 <out>/<日期>-起-止
 
     if args.date is None:
         args.date = dt.date.today().isoformat()
@@ -998,17 +1066,26 @@ def _session_span(sd: Path, date: str) -> tuple[float, float] | None:
 
 
 def rename_out_by_span(args, sessions: list[dict]) -> None:
-    """自动命名时把输出目录从 ``<日期>`` 改成
-    ``<日期>-<起>-<止>``(取全部打包会话的数据时间范围,HH-MM-SS)。"""
+    """输出目录自动带数据起止标记 ``<日期>-<起>-<止>``(取全部打包会话
+    的数据时间范围,HH-MM-SS)。
+
+    自动命名(--out 未指定):``.../<日期>`` 原地改名为
+    ``.../<日期>-<起>-<止>``;显式指定 ``--out`` 时,在给定目录下再进
+    一层,数据集落在 ``<out>/<日期>-<起>-<止>``。没有可解析的起止
+    (无 qc 窗口且目录名不含时刻)时保持原输出目录。
+    """
     spans = [s for s in (_session_span(i["dir"], args.date)
                          for i in sessions) if s]
     if not spans:
         return
     t0 = min(s[0] for s in spans)
     t1 = max(s[1] for s in spans)
-    args.out = args.out.parent / (
-        f"{args.out.name}-{dt.datetime.fromtimestamp(t0).strftime('%H-%M-%S')}"
-        f"-{dt.datetime.fromtimestamp(t1).strftime('%H-%M-%S')}")
+    stamp = (f"{dt.datetime.fromtimestamp(t0).strftime('%H-%M-%S')}"
+             f"-{dt.datetime.fromtimestamp(t1).strftime('%H-%M-%S')}")
+    if args.out_auto:
+        args.out = args.out.parent / f"{args.out.name}-{stamp}"
+    else:
+        args.out = args.out / f"{args.date}-{stamp}"
     print(f"[out] 输出目录(按数据起止): {args.out}")
 
 
@@ -1031,7 +1108,7 @@ def main(argv: list[str] | None = None) -> int:
 
     video_slots = discover_video_slots(sessions)
     if not video_slots:
-        print("[error] 所有会话都没有可用的视频流(无主时钟)")
+        print("[error] 所有会话都没有可用的视频流")
         return 1
     print(f"[video] 视频槽位: {list(video_slots)}")
 
@@ -1050,7 +1127,7 @@ def main(argv: list[str] | None = None) -> int:
             probed.append(info)
     sessions = probed
     if not sessions:
-        print("[error] 没有可用的会话(缺 master 帧或无数据流)")
+        print("[error] 没有可用的会话(合成不出主时间轴或无数据流)")
         return 1
 
     # ---- 特征集 = 全部模态(跨会话并集),缺任一模态的会话整体剔除 ----
@@ -1081,9 +1158,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"[spec] {len(specs)} 个特征: " + ", ".join(specs))
 
-    # 输出目录:自动命名时按这段数据的起止时刻改名字,再查重
-    if args.out_auto:
-        rename_out_by_span(args, sessions)
+    # 输出目录:按这段数据的起止时刻落名(--out 未指定时改名,指定时
+    # 进一层 <out>/<日期>-起-止),再查重
+    rename_out_by_span(args, sessions)
     if args.out.exists():
         if not args.force:
             print(f"[error] 输出目录已存在: {args.out} (用 --force 覆盖)")
@@ -1118,20 +1195,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[episode {i}] '{session_dir.name}' task='{task_label}' "
               f"{len(info['master'])} frames")
 
+    # meta 附上每个 episode 的 qc report(源会话 qc_report.json)
+    write_qc_meta(args.out, sessions)
+
     print(f"[done] {ds.meta.total_episodes} episodes, "
           f"{ds.meta.total_frames} frames → {args.out}")
     return 0
 
 
 def _probe_session(sd: Path, video_slots, args) -> dict | None:
-    """预扫一个会话:窗口、master 帧、窗口过滤后真正有数据的特征集合。
+    """预扫一个会话:窗口、主时间轴、窗口过滤后真正有数据的特征集合。
 
-    返回 None = 该会话不可用(没有 master 帧或一个特征都没有)。
+    返回 None = 该会话不可用(合成不出主时间轴或一个特征都没有)。
     """
     win = load_marker_window(sd) if not args.full else (None, None)
-    master_abs = load_master_frames(sd, video_slots, win)
+    master_abs = make_master_timeline(win, sd, video_slots)
     if master_abs is None or not len(master_abs):
-        print(f"[warn] 跳过 '{sd.name}': 没有 master 帧")
+        print(f"[warn] 跳过 '{sd.name}': 无 marker 窗口且无相机帧,"
+              "无法合成主时间轴")
         return None
 
     t0 = float(master_abs[0])

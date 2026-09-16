@@ -3,7 +3,7 @@
 # qc.html 页面是否随录生成(必选的 qc_report.json 不受影响)。渲染要解码
 # 视频抽缩略图、嵌入滤波副本,耗时且每条占几十 MB;关掉后细节只在
 # qc_report.json,需要看页面时用 scripts/qc_report.py <session> 手动渲染。
-html: true
+html: false
 
 timestamp_gap:
   min_s: 0.1              # 缺口超过此秒数 -> ERROR
