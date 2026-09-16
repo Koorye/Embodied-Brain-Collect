@@ -3,13 +3,13 @@
 
 Usage::
 
-    python scripts/pack_daily.py                          # 打包今天
-    python scripts/pack_daily.py 2026-09-14               # 指定日期
-    python scripts/pack_daily.py 2026-09-14 --source data/session-test \
+    python scripts/pack_daily.py                          # 打包今天(data/ 下)
+    python scripts/pack_daily.py --date 2026-09-14        # 指定日期
+    python scripts/pack_daily.py --date 2026-09-14 --source data/session-test \
         --out data/lerobot/daily-2026-09-14 --force
 
 在 ``--source``(默认 ``data``)下查找 ``<日期>-*`` 会话目录(兼容
-``<班次根>/<日期>-*`` 一层嵌套),每个会话打包成一个 episode,全部进同一
+``<批次根>/<日期>-*`` 一层嵌套),每个会话打包成一个 episode,全部进同一
 个数据集。会话目录里有 ``qc_report.json``(``scripts/qc.py`` 产出)时,
 整体等级为 ERROR 的会话直接排除;特征集取各会话全部模态的并集,缺任一
 模态的会话整体剔除(而不是把该模态从数据集中去掉)。依赖 conda 环境
@@ -941,6 +941,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max-episodes", type=int, default=None,
                    help="只转换前 N 个会话(调试用)")
     args = p.parse_args(argv)
+    args.out_auto = args.out is None     # 自动命名 → 追加数据起止时刻
 
     if args.date is None:
         args.date = dt.date.today().isoformat()
@@ -959,6 +960,44 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _session_span(sd: Path, date: str) -> tuple[float, float] | None:
+    """会话的数据时间范围(PC 时钟秒)。
+
+    优先 qc_report.json 的 marker 窗口(真实起止);没有报告/窗口则回退
+    目录名 ``<日期>-HH-MM-SS`` 里的开始时刻(起止相同)。
+    """
+    try:
+        w = json.loads((sd / "qc_report.json").read_text(encoding="utf-8")
+                       ).get("window")
+        if w and w.get("t0") and w.get("t1"):
+            return float(w["t0"]), float(w["t1"])
+    except Exception:
+        pass
+    try:
+        hh, mm, ss = (int(x) for x in sd.name.split("-")[-3:])
+        t = dt.datetime.strptime(
+            f"{date} {hh:02d}:{mm:02d}:{ss:02d}",
+            "%Y-%m-%d %H:%M:%S").timestamp()
+        return t, t
+    except Exception:
+        return None
+
+
+def rename_out_by_span(args, sessions: list[dict]) -> None:
+    """自动命名时把输出目录从 ``<日期>`` 改成
+    ``<日期>-<起>-<止>``(取全部打包会话的数据时间范围,HH-MM-SS)。"""
+    spans = [s for s in (_session_span(i["dir"], args.date)
+                         for i in sessions) if s]
+    if not spans:
+        return
+    t0 = min(s[0] for s in spans)
+    t1 = max(s[1] for s in spans)
+    args.out = args.out.parent / (
+        f"{args.out.name}-{dt.datetime.fromtimestamp(t0).strftime('%H-%M-%S')}"
+        f"-{dt.datetime.fromtimestamp(t1).strftime('%H-%M-%S')}")
+    print(f"[out] 输出目录(按数据起止): {args.out}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
@@ -975,12 +1014,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[input] {len(sessions)} 个会话: "
           + ", ".join(s.name for s in sessions[:5])
           + (" ..." if len(sessions) > 5 else ""))
-
-    if args.out.exists():
-        if not args.force:
-            print(f"[error] 输出目录已存在: {args.out} (用 --force 覆盖)")
-            return 1
-        shutil.rmtree(args.out)
 
     video_slots = discover_video_slots(sessions)
     if not video_slots:
@@ -1034,8 +1067,17 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     print(f"[spec] {len(specs)} 个特征: " + ", ".join(specs))
 
+    # 输出目录:自动命名时按这段数据的起止时刻改名字,再查重
+    if args.out_auto:
+        rename_out_by_span(args, sessions)
+    if args.out.exists():
+        if not args.force:
+            print(f"[error] 输出目录已存在: {args.out} (用 --force 覆盖)")
+            return 1
+        shutil.rmtree(args.out)
+
     ds = MultiFrequencyLeRobotDataset.create(
-        repo_id=f"session-{args.shift}-{args.date}", fps=MASTER_FPS,
+        repo_id=args.out.name, fps=MASTER_FPS,
         features=specs, root=args.out, use_videos=True,
     )
 

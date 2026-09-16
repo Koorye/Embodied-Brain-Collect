@@ -4,7 +4,7 @@
 生理腕带、任务标记，一台电脑同时采集；录完一键打包成多频率 LeRobot 数据集。
 
 ```
-预检硬件 → 检查相机 → 抽队列(图纸/任务) → 逐项录制 + QC → 保留/重采 → 收班打包
+预检硬件 → 检查相机 → 抽队列(图纸/任务) → 逐项录制 + QC → 保留/重采 → 批量打包
    ↑                                                            ↓
    └──────────────  一条命令: python scripts/run_session.py  ────┘
 ```
@@ -19,13 +19,12 @@
 - [工作原理：两段式启动](#工作原理两段式启动)
 - [采集模式：图纸模式 / 任务列表模式](#采集模式图纸模式--任务列表模式)
 - [采集员操作说明](#采集员操作说明)
-  - [1. 开班前检查](#1-开班前检查)
-  - [2. 白班采集（session-day）](#2-白班采集session-day)
-  - [3. 夜班采集（session-night）](#3-夜班采集session-night)
-  - [4. 图纸摆放与确认（仅图纸模式）](#4-图纸摆放与确认仅图纸模式)
-  - [5. 保留 / 重采 / 退出](#5-保留--重采--退出)
-  - [6. 收班：数据打包（白班 + 夜班）](#6-收班数据打包白班--夜班)
-  - [7. 图纸台账管理](#7-图纸台账管理)
+  - [1. 采集前检查](#1-采集前检查)
+  - [2. 逐条采集](#2-逐条采集)
+  - [3. 图纸摆放与确认（仅图纸模式）](#3-图纸摆放与确认仅图纸模式)
+  - [4. 成功 / 失败 / 退出](#4-成功--失败--退出)
+  - [5. 数据打包](#5-数据打包)
+  - [6. 图纸台账管理](#6-图纸台账管理)
 - [配置文件](#配置文件)
 - [数据打包详解（mf-lerobot）](#数据打包详解mf-lerobot)
 - [自动 QC](#自动-qc)
@@ -70,7 +69,7 @@ flowchart LR
 
 一个 launcher 并行管理所有传感器（每传感器独立进程），所有设备**首条数据就绪后
 统一开录**；视频统一 libx265 帧精确编码；腕带用设备 UTC 时钟（0x20 指令同步）；
-录完自动跑质量检查并生成自包含网页报告；收班后一条命令把全天数据打包成
+录完自动跑质量检查并生成自包含网页报告；采集结束后一条命令把当天数据打包成
 **mf-lerobot 多频率数据集**（每传感器独立 parquet，查询时按时间窗对齐）。
 
 ## 硬件一览
@@ -197,14 +196,13 @@ flowchart TD
 
 `--stim` 可选 `paradigm1`（pick & place 范式）或 `sync_test`（时钟同步测试），
 **所有 stim 在图纸模式下都会在画面上显示图纸对应的场景/任务**。
-模式与 stim 也可以写在 `configs/session.yaml` 里作为班次默认值。
+模式与 stim 也可以写在 `configs/session.yaml` 里作为运行默认值。
 
 ## 采集员操作说明
 
-> 本节是采集员的逐步操作手册。白班数据落在本机 `data/session-day/`，
-> 夜班落在 `data/session-night/`，互不混放；收班时分别打包。
-
-### 1. 开班前检查
+> 本节是采集员的逐步操作手册。数据落在本机 `data/<批次根>/`（如
+> `data/session-day`，名字自取），每次录制一个 `<日期>-<时间>` 子目录；
+> 采集结束后按批次根批量打包。
 
 ```bash
 conda activate collect
@@ -219,7 +217,7 @@ python scripts/check_cameras.py          # --list 只列设备,--idx 2 只看某
 预检全绿再开始采集。任一设备失败：按提示拔插/重启对应设备后重跑，
 不要带病开录。
 
-### 2. 白班采集（session-day）
+### 2. 逐条采集
 
 ```bash
 # 图纸模式(默认):队列来自 configs/environments 未采集的图纸
@@ -233,6 +231,9 @@ python scripts/run_session.py --session-dir data/session-day --stim paradigm1
 python scripts/run_session.py --seed 42 --auto-keep
 ```
 
+> 批次根目录名自取（上面的 `session-day` 只是示例）；不同批次用不同目录，
+> 数据互不混放。
+
 打印队列后**按 Enter 开始**。图纸模式的每一项：
 
 1. 程序全屏弹出**目标摆放图纸**（顶部是场景名与图纸编号）
@@ -241,15 +242,7 @@ python scripts/run_session.py --seed 42 --auto-keep
    （其他按键无效；未确认直接关窗 = 取消本次，不开录）
 4. 刺激程序自动运行，完成后自动 QC
 
-### 3. 夜班采集（session-night）
-
-与白班完全一致，只换班次根目录：
-
-```bash
-python scripts/run_session.py --session-dir data/session-night
-```
-
-每次录制生成独立目录 `{班次根}/yyyy-MM-dd-HH-mm-ss/`（重采自动加后缀，
+每次录制生成独立目录 `{批次根}/yyyy-MM-dd-HH-mm-ss/`（重跑自动加后缀，
 绝不覆盖旧数据），目录内：
 
 ```
@@ -262,7 +255,7 @@ python scripts/run_session.py --session-dir data/session-night
 └── qc.html              # 自包含网页报告(浏览器直接打开)
 ```
 
-### 4. 图纸摆放与确认（仅图纸模式）
+### 3. 图纸摆放与确认（仅图纸模式）
 
 * 图纸按屏幕等比缩放全屏显示，顶部写明场景与图纸编号
 * 摆放没有时间限制——**按 n 之后还有一次 Enter 确认**，中间反悔可继续调整
@@ -270,43 +263,41 @@ python scripts/run_session.py --session-dir data/session-night
 * 不小心直接关掉窗口 = 取消本次：目录留档但**没有录任何数据**，
   图纸也不会被消耗，重新选它即可
 
-### 5. 保留 / 重采 / 退出
+### 4. 成功 / 失败 / 退出
 
 每次录完（自动 QC 已跑）会要求输入字母 + Enter，防误触：
 
-| 输入 | 含义 | 图纸模式的记账 |
-|---|---|---|
-| `n` | **保留**，进入下一张/下一个 | ✅ 图纸记入台账，之后不再出现 |
-| `r` | **重采**，目录留档，马上重录同一张 | ❌ 不记账，图纸还在池里 |
-| `q` | **退出**本次班次 | ❌ 不记账 |
+| 输入 | 含义 | meta 标记 | 图纸模式的记账 |
+|---|---|---|---|
+| `n` | **采集成功**，进入下一张/下一个 | `success` | ✅ 图纸记入台账，之后不再出现 |
+| `r` | **采集失败**，目录留档，马上重录同一张 | `failed` | ❌ 不记账，图纸还在池里 |
+| `q` | **退出**本次采集（当前这条按成功留档） | `success` | ❌ 不记账 |
 
-**只有"保留"算采集成功**。全部完成后打印班次汇总（产量、无误比例、
-QC 问题分布），并写入 `run_summary.json`。QC 只供参考：有 ERROR 的录制
-也可以保留，由你拍板。
+结局写进该条 `meta.yaml` 的 `status` 字段（`success` / `failed`），随数据
+目录走，供打包与汇总识别单条数据的有效性。全部完成后打印批次汇总（产量、
+无误比例、QC 问题分布），并写入 `run_summary.json`。QC 只供参考：有 ERROR
+的录制也可以标记成功，由你拍板。
 
-### 6. 收班：数据打包（白班 + 夜班）
+### 5. 数据打包
 
-收班时指定班次（`day` / `night`）即可自动定位数据并按当日日期分配输出目录；
-日期可省略（默认当天），也可显式指定：
+采集结束后一条命令按日期打包：在 `--source`（默认 `data/`）下查找
+`<日期>-*` 会话目录（兼容 `data/<批次根>/<日期>-*` 一层嵌套），输出到
+`data/lerobot/<日期>-<起>-<止>/`——起止取**本次打包会话**的数据时间范围
+（HH-MM-SS，优先各会话 marker 窗口，缺报告时回退目录名时刻）；指定
+`--out` 时名字完全由你定，不再追加。日期可省略（默认当天）：
 
 ```bash
-# ---- 白班 ----
-python scripts/pack_daily.py day                     # 打包当天
-python scripts/pack_daily.py day --date 2026-09-15   # 打包指定日期
+python scripts/pack_daily.py                          # 打包今天
+python scripts/pack_daily.py --date 2026-09-16        # 打包指定日期
 
-# ---- 夜班 ----
-python scripts/pack_daily.py night
-python scripts/pack_daily.py night --date 2026-09-14
+# 指定批次根与输出目录
+python scripts/pack_daily.py --date 2026-09-16     --source data/session-batch1 --out data/lerobot/batch1
 
-# 通用参数
-python scripts/pack_daily.py day --force            # 覆盖已存在的输出
-python scripts/pack_daily.py day --full             # 不按 marker 窗口裁剪
-python scripts/pack_daily.py day --max-episodes 2   # 试打包前 2 个会话
+# 其他参数
+python scripts/pack_daily.py --force            # 覆盖已存在的输出
+python scripts/pack_daily.py --full             # 不按 marker 窗口裁剪
+python scripts/pack_daily.py --max-episodes 2   # 试打包前 2 个会话
 ```
-
-自动对应：白班 → `data/session-day/<日期>-*`，输出
-`data/lerobot/session-day/<日期>/`；夜班 → `data/session-night/<日期>-*`，
-输出 `data/lerobot/session-night/<日期>/`。
 
 * 每个会话打包成一个 episode；默认裁剪到 **RUN_START..RUN_END** marker
   窗口（`--full` 保留整段）
@@ -322,7 +313,7 @@ python scripts/pack_daily.py day --max-episodes 2   # 试打包前 2 个会话
 输出（LeRobot 标准结构 + 多频率扩展）：
 
 ```
-data/lerobot/session-day/2026-09-15/
+data/lerobot/2026-09-15-100029-100521/
 ├── meta/info.json          # fps、特征表、collect_version、hardware
 ├── meta/tasks.jsonl        # 任务列表
 ├── data/chunk-000/         # 每特征一个 parquet(时间索引)
@@ -337,14 +328,14 @@ data/lerobot/session-day/2026-09-15/
 ```python
 from mf_lerobot import MultiFrequencyLeRobotDataset
 ds = MultiFrequencyLeRobotDataset(
-    repo_id="session-day-2026-09-15",
-    root="data/lerobot/session-day/2026-09-15")
+    repo_id="2026-09-15-100029-100521",
+    root="data/lerobot/2026-09-15-100029-100521")
 item = ds[100]   # 各传感器按时间窗对齐后的字典
 item["observation.state"]   # (58,) 拼接状态
 item["action"]              # (58,) 与 state 同源
 ```
 
-### 7. 图纸台账管理
+### 6. 图纸台账管理
 
 每个场景目录的 `used.yaml` 就是该目录"已采集图纸"的唯一状态：
 
@@ -352,7 +343,7 @@ item["action"]              # (58,) 与 state 同源
 # configs/environments/餐桌_水果放盘子/used.yaml
 used:
   0001_combo006_r1.png:
-    session: data/session-day/2026-09-15-10-00-00
+    session: data/<批次根>/2026-09-15-10-00-00
     at: '2026-09-15 10:03:21'
 ```
 
@@ -368,7 +359,7 @@ used:
 | 文件 | 内容 |
 |---|---|
 | `recorders.yaml` | 每个传感器 slot：实现（`kind`）、可选显示名（`name`，写入 meta）、全部参数（相机 idx、COM 口、波特率、`hz`）。注释里写着"为什么是这个值" |
-| `session.yaml` | run_session 的班次默认：`mode`（env/tasks）、`stim`（paradigm1/sync_test）。CLI 传参优先 |
+| `session.yaml` | run_session 的运行默认：`mode`（env/tasks）、`stim`（paradigm1/sync_test）。CLI 传参优先 |
 | `tasks.yaml` | 任务库（task_id + 中文名），只读。**图纸模式下不参与队列**，仅任务列表模式使用 |
 | `stim.yaml` | MarkerSender 传输参数 + 每个 stim 的参数（全屏、时长、时间压缩） |
 | `environments/` | 图纸池：按场景目录存放 `config.yaml` + 图纸 PNG + 台账 `used.yaml` |
@@ -434,8 +425,8 @@ flowchart LR
 全分辨率，问题处自动插帧）。`--skip-qc` 跳过；手动复跑：
 
 ```bash
-python scripts/qc.py data/session-day/2026-09-15-10-00-00
-python scripts/qc_report.py data/session-day/2026-09-15-10-00-00   # 生成 qc.html
+python scripts/qc.py data/<批次根>/2026-09-15-10-00-00
+python scripts/qc_report.py data/<批次根>/2026-09-15-10-00-00   # 生成 qc.html
 ```
 
 QC 结论不改变录制结果，只供参考。
@@ -445,7 +436,7 @@ QC 结论不改变录制结果，只供参考。
 | 脚本 | 作用 |
 |---|---|
 | `scripts/run_session.py` | **主控**：`--mode env/tasks` × `--stim` → 逐项录制+QC → n/r/q → 汇总 |
-| `scripts/pack_daily.py` | **每日数据打包**：按日期把白班/夜班会话打包成 mf-lerobot 数据集 |
+| `scripts/pack_daily.py` | **每日数据打包**：按日期把批次根下的会话打包成 mf-lerobot 数据集 |
 | `scripts/session_summary.py` | 现有数据汇总：产量、任务覆盖、质量问题统计 |
 | `scripts/preflight.py` | 预检：逐 recorder 打开 + 数据流探测，输出分设备排查建议 |
 | `scripts/check_cameras.py` | 相机体检：枚举 + 实时画面 |
@@ -486,7 +477,7 @@ third_party/                    # 第三方二进制(git 忽略,Release 附件�
   MANUS_Core_3.1.1_SDK/         #   Manus 手套 SDK
   manus_glove/                  #   手套数据发布包(pip install -e)
 data/                           # 采集输出与打包结果(git 忽略)
-  session-day/  session-night/  #   白班 / 夜班 班次根
+  session-<批次>/              #   各批次根(名字自取,如 session-day)
   lerobot/                      #   打包产物
 ```
 
@@ -525,7 +516,7 @@ Theil–Sen 稳健初估 → 迭代 3σ 剔离群精修）：实测拟合速率 
 **旧数据回填**（默认 dry-run，`--write` 生效）：
 
 ```bash
-python scripts/rebuild_emg_timestamps.py data/session-night/2026-08-24-18-09-17 --write
+python scripts/rebuild_emg_timestamps.py data/<批次根>/2026-08-24-18-09-17 --write
 ```
 
 ## 刺激程序
