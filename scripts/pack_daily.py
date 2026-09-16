@@ -919,17 +919,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="示例: python scripts/pack_daily.py day --date 2026-09-14 --force",
+        epilog="示例: python scripts/pack_daily.py --date 2026-09-14 --force",
     )
-    p.add_argument("shift", choices=["day", "night"],
-                   help="班次:day=白班(data/session-day) / "
-                        "night=夜班(data/session-night)")
+    p.add_argument("shift", nargs="?", choices=["day", "night"], default=None,
+                   help="可选预设:day → --source data/session-day;"
+                        "night → --source data/session-night(默认 data/)")
     p.add_argument("--date", default=None,
                    help="日期 YYYY-MM-DD(默认当天)")
     p.add_argument("--source", type=Path, default=None,
-                   help="班次根目录覆盖(默认 data/session-<shift>)")
+                   help="批次根目录覆盖(默认 data/;day/night 预设则 "
+                        "data/session-<shift>)")
     p.add_argument("--out", type=Path, default=None,
-                   help="输出数据集目录(默认 data/lerobot/session-<shift>/<日期>)")
+                   help="输出数据集目录(默认 data/lerobot/<日期>;预设为 "
+                        "data/lerobot/session-<shift>/<日期>)")
     p.add_argument("--force", action="store_true",
                    help="输出目录已存在时先删除")
     p.add_argument("--full", action="store_true",
@@ -947,9 +949,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     except ValueError:
         p.error(f"无效日期: {args.date!r} (应为 YYYY-MM-DD)")
     if args.source is None:
-        args.source = PROJECT_ROOT / "data" / f"session-{args.shift}"
+        args.source = (PROJECT_ROOT / "data" / f"session-{args.shift}"
+                       if args.shift else PROJECT_ROOT / "data")
     if args.out is None:
-        args.out = (PROJECT_ROOT / "data" / "lerobot"
+        args.out = (PROJECT_ROOT / "data" / "lerobot" / args.date
+                    if not args.shift else
+                    PROJECT_ROOT / "data" / "lerobot"
                     / f"session-{args.shift}" / args.date)
     return args
 
