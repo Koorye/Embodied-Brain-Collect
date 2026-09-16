@@ -1,0 +1,11 @@
+# run_session 会话编排配置 —— CLI 显式传参优先于本文件。
+# mode: env   = 图纸模式。队列来自 configs/environments 下未采集的图纸
+#               (按场景目录台账 used.yaml 扣除),开录前全屏显示图纸,
+#               采集员照图摆放后按 n + Enter 才正式开录;paradigm1 的
+#               指令屏按图纸所在场景目录 config.yaml 的场景/任务显示。
+#       tasks = 任务列表模式。队列来自 configs/tasks.yaml 随机采样;
+#               paradigm1 的指令屏显示任务库里的任务名。
+# stim: 刺激程序 kind(paradigm1 / sync_test),参数在 configs/stim.yaml。
+#       图纸模式下建议 paradigm1(sync_test 不消费场景/任务信息)。
+mode: tasks
+stim: sync_test
