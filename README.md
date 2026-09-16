@@ -93,7 +93,10 @@ pyrealsense2 / pupil_labs / pycbsdk / serial …）全部**懒加载**：装哪�
 
 ## 安装
 
-依赖：Python ≥ 3.10，系统需安装 `ffmpeg`（含 libx265，视频编码与打包都用）。
+依赖：Python ≥ 3.10，系统需安装 `ffmpeg`（含 libx265，视频编码与打包都用；
+Windows 采集机用仓库 third_party 自带的 exe，见第 2 步）。
+
+### 1. Python 环境
 
 ```bash
 conda create -n Embodied-Brain-Collect python=3.10
@@ -106,11 +109,36 @@ pip install -e .
 > **装包用 `python -m pip`，不要用裸 `pip`**——裸 `pip` 可能指向系统 Python
 > （报 externally-managed-environment 就是这个原因）。
 
-数据打包还需要姊妹项目 [Embodied-Brain-Dataset](../Embodied-Brain-Dataset)
-的 `mf_lerobot` 包（同样 editable 安装到本环境）：
+### 2. third_party（第三方二进制，不入 git）
+
+仓库不含闭源 SDK 与 Windows 二进制。从 GitHub **Release** 下载
+`third_party.tar.gz` 附件，解压到**仓库根**（解压后得到 `third_party/`；
+附件名以实际 Release 为准）：
 
 ```bash
-pip install -e /home/baai/Projects/Embodied-Brain-Dataset
+curl -L https://github.com/Koorye/Embodied-Brain-Collect/releases/latest/download/third_party.tar.gz | tar xz
+```
+
+| 内容 | 用途 |
+|---|---|
+| `ffmpeg.exe` / `ffprobe.exe` | Windows 采集机的视频写盘/打包（Linux 走系统 PATH） |
+| `MANUS_Core_3.1.1_SDK/` | Manus 手套 SDK（Windows dll + Linux so） |
+| `manus_glove/` | 手套数据发布包，editable 安装（下一步） |
+
+### 3. Manus 手套包
+
+```bash
+pip install -e third_party/manus_glove
+```
+
+### 4. 数据打包（可选，打包机需要）
+
+还需要姊妹项目 **Embodied-Brain-Dataset** 的 `mf_lerobot` 包（私有仓库，
+地址向管理员索取）：克隆到与本仓库**同级的目录**，editable 安装：
+
+```bash
+git clone <Embodied-Brain-Dataset 仓库地址> ../Embodied-Brain-Dataset
+pip install -e ../Embodied-Brain-Dataset
 python -m pip install lerobot==0.3.3
 ```
 
@@ -456,6 +484,10 @@ src/embodied_brain_collect/
   checkers/                     # 组合式 QC
   visualizers/                  # QC 网页渲染
 tests/                          # pytest + 硬件 GUI 测试
+third_party/                    # 第三方二进制(git 忽略,Release 附件解压)
+  ffmpeg.exe  ffprobe.exe       #   Windows 采集机的 ffmpeg/ffprobe
+  MANUS_Core_3.1.1_SDK/         #   Manus 手套 SDK
+  manus_glove/                  #   手套数据发布包(pip install -e)
 data/                           # 采集输出与打包结果(git 忽略)
   session-day/  session-night/  #   白班 / 夜班 班次根
   lerobot/                      #   打包产物
