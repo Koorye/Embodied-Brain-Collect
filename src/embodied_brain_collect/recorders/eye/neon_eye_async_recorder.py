@@ -461,8 +461,12 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 if stop.is_set():
                     break
                 self._first_scene_evt.set()
-                if self._standby_mode and not self._recording:
-                    continue    # standby: discard (no decode, no write)
+                if self._standby_mode and (not self._recording
+                                           or not self._committed):
+                    continue    # 预热(open→go、go→commit):不解码不写盘 ——
+                                # mp4 从 commit 后第一帧起,与
+                                # scene_timestamps 严格 1:1(否则 commit 清
+                                # 预热时间戳时,先写进 mp4 的帧回不来)
                 # Decode in a worker thread (loop stays free for UDP).
                 img = await loop.run_in_executor(None, f.bgr_buffer)
                 self._last_scene_frame = img

@@ -50,6 +50,7 @@ class BaseCameraRecorder(BaseRecorder):
         self._written: dict[str, int] = {}
         self._last_shapes: dict[str, tuple] = {}
         self._frames_enqueued = 0
+        self._frames_precommit = 0
 
     # ---- async frame write pipeline (libx265 HEVC) --------------------------
 
@@ -107,8 +108,9 @@ class BaseCameraRecorder(BaseRecorder):
 
     def _recording_signal(self) -> int:
         """帧走异步写盘管线,不进 _count_samples 的三类缓冲(写入失败时
-        更不可见)—— 确认阶段以投喂进管线的帧数为准。"""
-        return self._frames_enqueued
+        更不可见)—— 确认阶段以投喂进管线的帧数为准;预热期直接丢弃的
+        commit 前帧也计入(证明数据在流动)。"""
+        return self._frames_enqueued + self._frames_precommit
 
     def arr_video(self, key: str, ts: float, arr: np.ndarray) -> None:
         """Feed one frame into the stream's async write pipeline.
@@ -116,7 +118,15 @@ class BaseCameraRecorder(BaseRecorder):
         Non-blocking: the poll loop never waits on disk I/O.  When the
         writer falls behind, the OLDEST queued frame is dropped so the
         recording stays synchronized with real time.
+
+        两段式启动:commit 前的预热帧**不进 mp4**——容器一旦写入就无法
+        回退,而 commit 会清掉预热时间戳,先写后清会让 mp4 永远比
+        ``{key}_timestamps`` 多出预热帧数(历史教训)。丢弃后容器的第一帧
+        就是 commit 后第一帧,1:1 严格成立;确认阶段照常计数。
         """
+        if self._launch_mode and not self._committed:
+            self._frames_precommit += 1
+            return
         self._start_write_worker(key)
         self._frames_enqueued += 1
         q = self._write_queues[key]

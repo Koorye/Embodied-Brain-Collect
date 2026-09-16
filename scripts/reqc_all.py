@@ -55,6 +55,8 @@ def _video_pairs(session_dir: Path) -> list[dict]:
             except Exception:
                 continue                # npz 坏了:对应视频核对时按缺失处理
         for mp4 in sorted(slot_dir.glob("*.mp4")):
+            if mp4.stem.endswith((".orig", ".repair")):
+                continue        # repair_videos 的备份/中间产物,不参与核对
             ts_key = f"{mp4.stem}_timestamps"
             if ts_key not in keys and mp4.stem == "eye":
                 ts_key = "scene_timestamps"       # eye 槽位特例
