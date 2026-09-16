@@ -2,6 +2,61 @@
 
 ## 1.2.1 — 未发布
 
+### 深度视频不再进黑屏检查(camera checker)
+
+* 相机槽位的三个视频检查(BlackFrame/Freeze/FrameCountMatch)原来
+  `video=""` 时按字典序取目录里第一个 mp4 —— 深度槽位(cam 目录里同时有
+  `frames.mp4` 与 `depth_frames.mp4`)会选中深度视频:深度图天然趋黑
+  (gray12le 原始深度值,室内场景均值亮度 ~7,全帧低于阈值 8),BlackFrame
+  必然误报"100% 黑屏"ERROR,把整份 qc_report 拖成 ERROR(实际踩坑:
+  monkey 线 2026-09-16 的 cam_head 会话)。修复:视频检查钉死
+  `video="frames.mp4"`,深度流不做黑屏/冻结检查;FrameCountMatch 的比对
+  对象(RGB 时间戳)与视频文件也从此一一对应,不再张冠李戴。RGB-only
+  相机行为不变。
+
+### intan digital_map 默认启用猴台架接线映射(eeg_recorder_config)
+
+* `IntanEegRecorderConfig.digital_map` 从 `None`(直接用字值)改为默认
+  `{"0x4000": 16, "0x2000": 32}` —— 猴台架的实测接线(box bit4→DIN14,
+  bit5→DIN13,码16→0x4000、码32→0x2000),simple/paradigm1 的 16/32
+  边界码经 digital_map 还原后才能进 EEG 对齐拟合。接线改动或换台架在
+  recorders.yaml 里覆盖。注意:dataclass 字段经 `field(default_factory=…)`
+  给默认(dict 实例直接作默认值会在 import 时抛 ValueError)。
+
+### 多 COM 口 TTL、simple_stim 接入、头环 config 接入(自 monkey 线合入)
+
+* **MarkerSender 多 COM 口**:``port`` 接受逗号/分号分隔串或列表
+  (``"COM5,COM14"``),同一个码同时写全部 TTL 口、共享同一保持窗口
+  (时序与单口一致);单口打开/写入失败只响亮告警并摘除,其余口照常,
+  全部失败才硬失败(与旧版单口行为一致)。stim.yaml ``parallelbox``
+  与 ``--parallelbox`` 注释同步。多台放大器各自对齐时每台接一台
+  ParallelBox 即可。
+* **simple_stim 注册进 stim 工厂**:最小刺激流程(任务名 → 空格开跑 →
+  空格结束 → 退出,只发 P1_RUN_START(16)/P1_RUN_END(32) 一对边界码,
+  Esc 中止也补 END 保住码对)。``marker_codes`` 补 P1 边界码(并入
+  NAMED 反查表);``build_stim_cmd`` 对 simple 传 ``--task-id``
+  (无 ``--once``,本来就是单次流程);stim.yaml 增 ``simple`` 参数段,
+  session.yaml 的 stim 键注释同步。仅任务列表模式可用(需要 task-id)。
+* **头环(EGO headband)config 接入**:``get_net_ego_headband`` 签名对齐
+  新版 wired-TCP recorder(host 192.168.55.6:5577、connect_timeout、
+  require_synced、camera_topics/camera_names/imu_topics、crf/preset/
+  encoder、audio_enabled/require_audio/audio_topic),recorders.yaml 的
+  ego_headband 块按新键更新(保持注释态,接好设备后启用);
+  ``get_dummy_ego_headband`` 进 dummy 工厂映射;troubleshooting 提示去
+  掉 UDP 旧说法。配套把 EgoHeadbandChecker 与 QC 页 ego_headband 提取
+  器切到 ``{name}_timestamps`` + ``{name}.mp4`` 新 schema(每相机追加
+  FrameCountMatch/BlackFrame/Freeze 视频检查),dummy headband 的
+  schema/时钟/QC 三个测试按新契约更新。
+* 不合入:YOLO 离线手部检测、任务库/任务流程改动。
+
+### 移除 intan open 的服务器自愈(intan_eeg_recorder)
+
+* open 里"3s 无波形数据就 disconnect→connect 重启 RHX TCP 波形服务器、
+  再等预算用尽"的自愈整段删除(连同 `_wait_first_block`):流确认统一
+  归 launcher 的确认阶段(`_wait_data_flowing`),recorder 的 open 只管
+  连接与配置,与 blackrock/curry 同构。服务器挂死时表现为确认阶段
+  无数据,不再有 open 内的重启旁路。
+
 ### meta 附每个 episode 的 qc report,hardware 只列实际槽位(pack_daily)
 
 * 打包结束时把每个 episode 对应源会话的 `qc_report.json` 原文汇总写进

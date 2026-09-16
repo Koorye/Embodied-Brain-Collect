@@ -380,9 +380,9 @@ class IntanEegRecorder(BaseEegRecorder):
                       f"{len(confirmed)} 路解析({confirmed[0]}.."
                       f"{confirmed[-1]})", level="WARNING")
 
-        # 波形服务器:未启动就通过命令口拉起(端口不符则先改端口)。
-        # 注意:就算 status 已是 connect 也照常连 —— 上一次运行若把服务器
-        # 留在挂死状态,数据口会静默无流,由下面的自愈逻辑处理。
+        # 波形服务器:未启动就通过命令口拉起(端口不符则先改端口);
+        # status 已是 connect 也照常连。流是否真的在发由 launcher 的
+        # 确认阶段判断。
         if cfg.start_data_server:
             self._connect_data_stream()
 
@@ -402,27 +402,8 @@ class IntanEegRecorder(BaseEegRecorder):
                     f"RHX 未在采集({mode!r})且 set_runmode="
                     "false — 在 RHX 里按 Run,或改配置")
 
-        # 服务器自愈(设备特有,launcher 的通用确认阶段做不了):RHX 的
-        # TCP 波形服务器有时留在挂死状态,3 秒无数据就 disconnect→connect
-        # 重启一次再验证。这不是数据健康检查 —— 真正的流确认在 launcher。
-        if not self._wait_first_block(3.0) and cfg.start_data_server:
-            self._log("[eeg:intan] 3s 无波形数据 — 重启 RHX TCP 波形服务器"
-                      "(disconnect→connect)后重试", level="WARNING")
-            self._cmd("set tcpwaveformdata.status disconnect")
-            self._close_data_sock()
-            time.sleep(0.5)
-            self._cmd("set tcpwaveformdata.status connect")
-            self._started_server = True
-            time.sleep(0.5)
-            self._connect_data_stream()
-        # 自愈后仍无流:给出比"确认阶段无数据"更可操作的报错。预算留 5s
-        # 提前量,让本处的明确报错跑在 launcher 的 open_timeout 强杀之前。
-        budget = max(5.0, float(self.config.open_timeout) - 5.0)
-        if not self._wait_first_block(budget):
-            raise ConnectionError(
-                f"{budget:g}s 内没有收到波形数据(含一次服务器重启)— RHX "
-                "是否处于 Run 状态、通道使能是否与头戴一致、TCP Waveform "
-                "Data 服务器是否被其他客户端占住")
+        # 不等首帧:回调是否真的在产数由 launcher 的确认阶段判断
+        # (服务器挂死/未 Run 都表现为确认阶段无数据)
         self._log(f"[eeg:intan] {len(confirmed)} ch @ "
                   f"{self._sample_rate:g} Hz (RHX TCP), trigger = "
                   + ("DIGITAL-IN word" if digital_ok else "无(使能失败)"))
@@ -464,20 +445,6 @@ class IntanEegRecorder(BaseEegRecorder):
                 sock.close()
             except OSError:
                 pass
-
-    def _wait_first_block(self, budget_s: float) -> bool:
-        t0 = time.time()
-        while self._total_samples == 0:
-            try:
-                self._poll_read()
-            except (OSError, ConnectionError) as exc:
-                self._log(f"[eeg:intan] 波形流断开 — {type(exc).__name__}: "
-                          f"{exc}", level="WARNING")
-                return False
-            if time.time() - t0 > budget_s:
-                return False
-            time.sleep(0.02)
-        return True
 
     def _reset_stream_state(self) -> None:
         if self._parser is not None:

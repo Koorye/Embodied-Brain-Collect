@@ -340,24 +340,41 @@ def get_dummy_ego_headband(session_dir: str, duration: float = 0.0,
 
 
 def get_net_ego_headband(session_dir: str, duration: float = 0.0,
-                         host: str = "0.0.0.0", port: int = 5555,
-                         transport: str = "udp",
-                         n_cameras: int = 4, cam_width: int = 640,
-                         cam_height: int = 480, cam_fps: float = 30.0,
-                         n_imus: int = 2, imu_rate_hz: float = 200.0,
+                         host: str = "192.168.55.6", port: int = 5577,
+                         connect_timeout: float = 10.0,
+                         require_synced: bool = False,
+                         camera_topics=None, camera_names=None, imu_topics=None,
+                         crf: int = 23, preset: str = "medium",
+                         encoder: str = "auto", cam_fps: float = 30.0,
+                         audio_enabled: bool = False,
+                         require_audio: bool = True,
+                         audio_topic: str = "/microphone/audio",
                          open_timeout: float = 30.0, hz: float = 1000.0) -> BaseRecorder:
-    """EGO headband over the network — 4 cameras + 2 IMUs.
+    """EGO headband over the wired ROS TCP protocol — 4 fisheye JPEG cameras
+    (-> {name}.mp4) + 2 IMUs (-> npz),可选麦克风(-> wav)。
 
-    The wire protocol is device-specific; ``NetEgoHeadbandRecorder`` owns the
-    socket and demux, but ``_parse_packet`` must be implemented for the real
-    device before it yields data.
+    ``encoder='auto'`` encodes HEVC on the GPU (hevc_nvenc) when available and
+    falls back to the CPU (libx265) otherwise.  ``camera_topics`` / ``imu_topics``
+    (default: the device's own topic names) map ROS topics onto the camera slots
+    / imu{j} in order; ``camera_names`` (default ``left/right/bleft/bright``)
+    gives each camera slot its mp4/npz stem.  The open gate runs the clock-sync
+    handshake, so give it a generous ``open_timeout``.
     """
+    kw = {}
+    if camera_topics is not None:
+        kw["camera_topics"] = tuple(camera_topics)
+    if camera_names is not None:
+        kw["camera_names"] = tuple(camera_names)
+    if imu_topics is not None:
+        kw["imu_topics"] = tuple(imu_topics)
     return NetEgoHeadbandRecorder(EgoHeadbandRecorderConfig(
         session_dir=session_dir, duration=duration,
-        host=host, port=port, transport=transport,
-        n_cameras=n_cameras, cam_width=cam_width, cam_height=cam_height,
-        cam_fps=cam_fps, n_imus=n_imus, imu_rate_hz=imu_rate_hz,
-        open_timeout=open_timeout, hz=hz))
+        host=host, port=port, connect_timeout=connect_timeout,
+        require_synced=require_synced,
+        crf=crf, preset=preset, encoder=encoder, cam_fps=cam_fps,
+        audio_enabled=audio_enabled, require_audio=require_audio,
+        audio_topic=audio_topic,
+        open_timeout=open_timeout, hz=hz, **kw))
 
 
 # ---- Convenience bundles ------------------------------------------------
@@ -395,7 +412,7 @@ def get_dummy_recorders(session_dir: str, duration: float = 0.0,
         "position":  lambda: get_dummy_position(session_dir, duration),
         "marker":    lambda: get_udp_marker(session_dir, duration),
         "wristband": lambda: get_dummy_wristband(session_dir, duration),
-        # "ego_headband": lambda: get_dummy_ego_headband(session_dir, duration),
+        "ego_headband": lambda: get_dummy_ego_headband(session_dir, duration),
     }
     names = slots if slots is not None else list(all_factories)
     unknown = [n for n in names if n not in all_factories]

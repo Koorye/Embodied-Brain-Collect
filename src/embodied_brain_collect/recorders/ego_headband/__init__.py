@@ -6,7 +6,7 @@ Usage::
         EgoHeadbandRecorderConfig, DummyEgoHeadbandRecorder, NetEgoHeadbandRecorder,
     )
 
-    cfg = EgoHeadbandRecorderConfig(host="0.0.0.0", port=5555, duration=10)
+    cfg = EgoHeadbandRecorderConfig(host="192.168.55.6", port=5577, duration=10)
     rec = NetEgoHeadbandRecorder(cfg)
     rec.run()
 """

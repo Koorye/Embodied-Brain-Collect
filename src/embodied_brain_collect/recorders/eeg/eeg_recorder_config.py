@@ -1,5 +1,5 @@
 """EEG recorder configs."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ..base import BaseRecorderConfig
 
 
@@ -51,9 +51,12 @@ class IntanEegRecorderConfig(BaseRecorderConfig):
                                  # 16 位数字输入字(TTL/marker 通路,ParallelBox 接这里)
     digital_mask: int = 0xFFFF   # 事件码 = 数字字 & mask;剥空闲基线用
                                  # (接线只通部分位时码会碰撞,mask 救不了)
-    digital_map: dict = None     # 字→码映射表(掩码后再查表;查不到不发事件)。
-                                 # 接线只通个别位时用它把字型翻译回 marker 码,
-                                 # 如 {"0x4000": 16, "0x2000": 32}
+    # 字→码映射表(掩码后再查表;查不到不发事件)。接线只通个别位时用它把
+    # 字型翻译回 marker 码。默认值 = 猴台架 Intan 的实测接线(box bit4→DIN14,
+    # bit5→DIN13:码16→0x4000,码32→0x2000);接线改了或换台架在
+    # recorders.yaml 里覆盖,全 8 位接线时删掉此表即可。
+    digital_map: dict = field(
+        default_factory=lambda: {"0x4000": 16, "0x2000": 32})
     set_runmode: bool = True     # 录制时 set runmode run,收尾 stop——会一并
                                  # 停掉 RHX 自身的 Record,慎改
     start_data_server: bool = True  # 允许 recorder 通过命令口启动 TCP 波形服务器

@@ -14,6 +14,7 @@ import sys
 #: kind -> 模块名
 STIM_KINDS: dict[str, str] = {
     "paradigm1": "embodied_brain_collect.stim.paradigm1_pickplace",
+    "simple": "embodied_brain_collect.stim.simple_stim",
     "sync_test": "embodied_brain_collect.stim.sync_test",
 }
 
@@ -30,10 +31,10 @@ def build_stim_cmd(kind: str, *, task_id: int | None = None,
         raise ValueError(f"未知 stim kind: {kind!r} (可用: {sorted(STIM_KINDS)})")
 
     argv = [sys.executable, "-m", STIM_KINDS[kind]]
-    if task_id is not None and kind == "paradigm1":
+    if task_id is not None and kind in ("paradigm1", "simple"):
         argv += ["--task-id", str(task_id)]
     if environment:
         argv += ["--environment", environment]
     if kind == "paradigm1":
-        argv.append("--once")
+        argv.append("--once")          # simple 本来就是单次流程
     return argv

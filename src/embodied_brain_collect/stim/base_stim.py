@@ -86,7 +86,8 @@ class BaseStim:
     @staticmethod
     def add_common_args(ap: argparse.ArgumentParser, over: dict) -> None:
         ap.add_argument("--parallelbox", default=over.get("parallelbox", "COM14"),
-                        help="ParallelBox 串口(EEG TTL)")
+                        help="ParallelBox 串口(EEG TTL);多台放大器逗号分隔,"
+                             '如 "COM5,COM14"')
         ap.add_argument("--baud", type=int,
                         default=int(over.get("baud", 115200)))
         ap.add_argument("--marker-host", default=over.get("udp_host", "127.0.0.1"))

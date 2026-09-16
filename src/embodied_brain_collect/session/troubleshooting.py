@@ -36,7 +36,8 @@ SLOT_GUIDES: dict[str, str] = {
     "eye":        "拔插网线;退出并重启手机上的 Neon app(Companion)",
     "hand_pose":  "拔插接收器(dongle),确保手套全蓝常亮(Manus Core 里两只都在线)",
     "position":   "确保 app 连接(SteamVR 正在运行,tracker 显示在线)",
-    "ego_headband": "检查网线/交换机与设备推流(确认 host/port、transport 与设备一致,UDP 端口未被防火墙拦截或占用)",
+    "ego_headband": "检查网线/交换机,确认设备 wired_tcp server 已启动"
+                    "(host/port 与 recorders.yaml 一致,端口未被防火墙拦截或占用)",
     "wristband":  "确认手环已开机且在附近;开关系统蓝牙后重试(蓝牙缓存常见坑);"
                   "多台同时在附近时在 recorders.yaml 里固定 address",
     "cam":        "拔插对应 USB 口(逐个口试,换口后重新预检)",

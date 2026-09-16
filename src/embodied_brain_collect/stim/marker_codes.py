@@ -54,6 +54,12 @@ def make_hand_cue(cycle: int, action: int) -> int:
         raise ValueError(f"action {action} out of range [0, 3]")
     return HAND_CUE_BASE + cycle * 4 + action
 
+# ---- paradigm1/simple(精简 marker 版)边界码 ---------------------------------
+# 整个 run 只发这一对码,trial 内事件不发 marker。EEG 对齐按码配对,
+# 恰有两个唯一码即可完成拟合(最少配对数就是 2)。
+P1_RUN_START: Final[int] = 0x10    #  16
+P1_RUN_END:   Final[int] = 0x20    #  32
+
 # ---- error sentinels --------------------------------------------------------
 ERROR:        Final[int] = 0xFE   # 254
 PANIC:        Final[int] = 0xFF   # 255
@@ -77,6 +83,8 @@ NAMED: Final[dict[int, str]] = {
     IMG_END:     "IMG_END",
     VIDEO_START: "VIDEO_START",
     VIDEO_END:   "VIDEO_END",
+    P1_RUN_START: "P1_RUN_START",
+    P1_RUN_END:   "P1_RUN_END",
     ERROR:       "ERROR",
     PANIC:       "PANIC",
     IDLE:        "IDLE",

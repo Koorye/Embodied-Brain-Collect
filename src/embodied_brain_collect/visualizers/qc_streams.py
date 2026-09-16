@@ -429,36 +429,38 @@ def rows_wristband(z, d: Path, t0: float, opt) -> tuple[list, list]:
 def rows_ego_headband(z, d: Path, t0: float, opt) -> tuple[list, list]:
     """N cameras + M IMUs on one network device.
 
-    Frames are raw uint8 arrays inside the NPZ (no mp4 to decode), so a
-    camera contributes its frame clock and — only when the caller asked for
-    frame extraction — a mean-luminance trace; loading four full-resolution
-    frame stacks is expensive, so it stays behind ``opt.frames``.  The IMUs
-    draw gyro/accel exactly like the eye and EMG streams do.  Camera and IMU
-    counts are read from the field names, matching the checker.
+    Each camera is a ``{name}.mp4`` with ``{name}_timestamps`` in the NPZ, so
+    it draws like the standalone camera stream: its frame clock always, plus a
+    luminance trace and thumbnails decoded from the mp4 when the caller asked
+    for frames.  The IMUs draw gyro/accel exactly like the eye and EMG streams
+    do.  Camera and IMU counts are read from the field names, matching the
+    checker.
     """
     rows: list = []
+    thumbs: list = []
     files = z.files if hasattr(z, "files") else list(z.keys())
-    cams = sorted(int(m.group(1)) for k in files
-                  if (m := re.match(r"cam(\d+)_timestamps$", k)))
+    cams = sorted(m.group(1) for k in files
+                  if (m := re.match(r"(\w+)_timestamps$", k)))
     imus = sorted(int(m.group(1)) for k in files
                   if (m := re.match(r"imu(\d+)_ts$", k)))
 
-    for i in cams:
-        t = _rel(z, f"cam{i}_timestamps", t0)
+    for cam in cams:
+        t = _rel(z, f"{cam}_timestamps", t0)
         if t is None:
             continue
-        rows += timing_rows(t, f"cam{i}")
-        if not opt.frames:
-            continue
-        frames = z.get(f"cam{i}_frames")
-        if (frames is not None and getattr(frames, "ndim", 0) == 4
-                and len(frames) == t.size and t.size > 2):
-            lum = frames.mean(axis=(1, 2, 3))
-            r = row(f"cam{i} 画面亮度",
-                    [series(t, lum, label="亮度", slot=1)], h=48,
-                    src=f"cam{i}")
-            if r:
-                rows.append(r)
+        rows += timing_rows(t, cam)
+        mp4 = d / f"{cam}.mp4"
+        if opt.frames and mp4.is_file():
+            v = scan_video(mp4, t, want_times=opt.want_times(cam),
+                           frames=opt.frames, fps=opt.fps, thumb_w=opt.thumb_w,
+                           jpeg_q=opt.jpeg_q)
+            thumbs += v.thumbs
+            if v.t_samp is not None and v.t_samp.size > 2:
+                r = row(f"{cam} 画面亮度",
+                        [series(v.t_samp, v.lums, label="亮度", slot=1)],
+                        h=48, src=cam)
+                if r:
+                    rows.append(r)
 
     for j in imus:
         t = _rel(z, f"imu{j}_ts", t0)
@@ -470,7 +472,7 @@ def rows_ego_headband(z, d: Path, t0: float, opt) -> tuple[list, list]:
             a = z.get(key)
             if a is not None and len(a) == t.size:
                 rows += xyz_rows(label, t, a, unit=unit, src=f"imu{j}")
-    return rows, []
+    return rows, thumbs
 
 
 EXTRACTORS: tuple[tuple[str, object], ...] = (

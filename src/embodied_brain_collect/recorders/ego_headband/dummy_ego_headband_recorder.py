@@ -1,9 +1,9 @@
-"""Dummy EGO headband — 4 synthetic cameras + 2 synthetic IMUs.
+"""Dummy EGO headband — 4 synthetic cameras (mp4) + 2 synthetic IMUs (npz).
 
-Emits the same output schema as the real network recorder so downstream
-tools and tests can run without hardware.  Cameras are small moving
-color-bar patterns at ``cam_fps``; IMUs are smooth sinusoids at
-``imu_rate_hz``.
+Emits the SAME output schema as the real network recorder so downstream tools,
+QC and tests run without hardware: cameras are small moving color-bar patterns
+at ``cam_fps`` written to ``{name}.mp4`` via the shared HEVC pipeline; IMUs are
+smooth sinusoids at ``imu_rate_hz`` accumulated into the npz.
 """
 
 import time
@@ -13,7 +13,7 @@ from .ego_headband_recorder_config import EgoHeadbandRecorderConfig
 
 
 def _bar(t: float, w: int, h: int, hue0: float) -> np.ndarray:
-    """Small moving color-bar test pattern, shape (H, W, 3) uint8."""
+    """Small moving color-bar test pattern, shape (H, W, 3) uint8 RGB."""
     img = np.zeros((h, w, 3), dtype=np.uint8)
     n = 8
     bw = max(w // n, 1)
@@ -36,6 +36,7 @@ class DummyEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._cam_t = 0.0
         self._imu_t = 0.0
         self._poll_i = 0
+        self._audio_index = 0
 
     def _open(self) -> bool:
         cfg = self.config
@@ -43,14 +44,16 @@ class DummyEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._imu_t = 0.0
         self._poll_i = 0
         self._log(f"[ego_headband:dummy] synthetic {cfg.n_cameras} cams "
-                  f"{cfg.cam_width}x{cfg.cam_height}@{cfg.cam_fps:.0f}fps + "
-                  f"{cfg.n_imus} IMU @{cfg.imu_rate_hz:.0f}Hz")
+                  f"{cfg.cam_width}x{cfg.cam_height}@{cfg.cam_fps:.0f}fps -> mp4 "
+                  f"+ {cfg.n_imus} IMU @{cfg.imu_rate_hz:.0f}Hz")
         return True
 
     def _close(self) -> None:
-        n0 = len(self._ts_buf.get("cam0", []))
+        self._close_microphone()
         m0 = len(self._buf.get("imu0_ts", []))
-        self._log(f"[ego_headband:dummy] stopped (cam0={n0} imu0={m0})")
+        # cam frame counts are logged by the base _save (per {name}.mp4), after
+        # the writer threads flush — they are still queued at _close time.
+        self._log(f"[ego_headband:dummy] stopped (imu0={m0})")
 
     def _poll(self, ts):
         cfg = self.config
@@ -59,7 +62,7 @@ class DummyEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         cam_every = max(1, int(round(cfg.imu_rate_hz / max(cfg.cam_fps, 1.0))))
         self._poll_i += 1
 
-        # ---- IMUs (every poll, ~imu_rate_hz) ----
+        # ---- IMUs (every poll, ~imu_rate_hz) -> npz ----
         p = 2 * np.pi * 2.0 * self._imu_t
         for j in range(cfg.n_imus):
             off = j * 0.7
@@ -72,14 +75,27 @@ class DummyEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                          dtype=np.float32))
         self._imu_t += imu_dt
 
-        # ---- cameras (every `cam_every` polls, ~cam_fps) ----
+        # ---- cameras (every `cam_every` polls, ~cam_fps) -> {name}.mp4 ----
         if self._poll_i % cam_every == 0:
             hue_step = 1.0 / max(cfg.n_cameras, 1)
             for i in range(cfg.n_cameras):
-                self._acc_ts(f"cam{i}", ts)
-                self._acc_arr(f"cam{i}_frames",
-                    _bar(self._cam_t, cfg.cam_width, cfg.cam_height,
-                         hue0=i * hue_step))
+                self.arr_video(self._cam_stem(i), ts,
+                               _bar(self._cam_t, cfg.cam_width, cfg.cam_height,
+                                    hue0=i * hue_step))
             self._cam_t += 1.0 / max(cfg.cam_fps, 1.0)
 
+        if cfg.audio_enabled:
+            # Use the same packet schema and output path as the device.
+            target_samples = int(self._imu_t * 16000)
+            while self._audio_index + 320 <= target_samples:
+                positions = np.arange(self._audio_index, self._audio_index + 320)
+                pcm = (2000 * np.sin(2 * np.pi * 440 * positions / 16000)).astype("<i2")
+                self._write_microphone({
+                    "type": "audio/PCM", "stream_seq": self._audio_index // 320 + 1,
+                    "read_complete_ns": time.time_ns(),
+                    "timestamp_basis": "read_complete_not_hardware_capture",
+                    "audio": {"sample_rate": 16000, "channels": 1, "format": "S16_LE",
+                              "samples": 320, "sample_index": self._audio_index},
+                }, pcm.tobytes())
+                self._audio_index += 320
         time.sleep(imu_dt)

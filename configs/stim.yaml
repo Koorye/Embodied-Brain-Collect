@@ -1,13 +1,17 @@
 # 刺激程序(marker 发送)配置。所有 stim 参数都在这里 —— launcher 不传任何
-# stim 参数,只指定用哪个 kind(--stim paradigm1 / --stim sync_test)。
+# stim 参数,只指定用哪个 kind(--stim paradigm1 / --stim simple /
+# --stim sync_test;run_session 不带 --stim 时用 configs/session.yaml 的
+# stim 键)。
 
 # ---- 公共:MarkerSender 传输 ----
-parallelbox: COM14        # ParallelBox TTL 串口
+parallelbox: COM14        # ParallelBox TTL 串口;多台放大器各自对齐时逗号
+                          # 分隔多口,如 "COM5,COM14" —— 同一个码同时打到
+                          # 全部口;单口打开/写入失败只告警并摘除,其余口照常
 baud: 115200
 hold_s: 0.020             # 串口脉冲保持时间
 udp_host: "127.0.0.1"     # UDP 标记(给 marker recorder)
 udp_port: 9999
-serial: false             # 是否写串口 TTL
+serial: true              # 是否写串口 TTL
 
 # ---- paradigm1_pickplace ----
 paradigm1:
@@ -19,6 +23,17 @@ paradigm1:
   fix_radius: 14
   fix_pre_s: 2.0          # 注视点预呈现
   instr_s: 5.0           # 指令呈现时长
+
+# ---- simple ----
+# 最小刺激:任务名 → 空格开跑 → 空格结束 → 退出;只发 P1_RUN_START(16)/
+# P1_RUN_END(32) 两个 marker,与 paradigm1 的精简边界码一致,没有注视点/
+# 指令等其他画面。Esc 中止也会补 RUN_END 保住对齐码对。任务列表模式用
+# (需要 --task-id,launcher 自动传);图纸模式不支持。
+simple:
+  fullscreen: true
+  width: 1920
+  height: 1080
+  font_size: 64
 
 # ---- sync_test ----
 sync_test:

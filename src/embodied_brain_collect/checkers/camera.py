@@ -20,9 +20,12 @@ class CameraChecker(BaseChecker):
 
     checks = [
         ts_checks("frames", expected_rate=30.0),
-        FrameCountMatch(),
-        BlackFrame(),
-        Freeze(),
+        # 视频检查必须钉死 frames.mp4:深度槽位目录里还有 depth_frames.mp4,
+        # 空 video 名会按字典序取到它 —— 深度图天然趋黑,BlackFrame 必然误报
+        # "100% 黑屏";深度流不做黑屏/冻结检查。
+        FrameCountMatch(video="frames.mp4"),
+        BlackFrame(video="frames.mp4"),
+        Freeze(video="frames.mp4"),
     ]
 
     def prepare(self, ctx: CheckContext) -> None:

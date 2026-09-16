@@ -84,7 +84,10 @@ recorders:
   # ego_headband:
   #   kind: net_ego_headband
   #   name: "Ego Headband V1.5"     # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-  #   host: "0.0.0.0"               # UDP 服务端绑定地址;设备往这个端口推流
-  #   port: 5555
-  #   transport: udp
-  #   hz: 1000
+  #   host: "192.168.55.6"          # 设备(wired_tcp server)地址;本机作为 TCP 客户端连过去
+  #   port: 5577                    # 设备推流端口
+  #   connect_timeout: 10           # TCP 连接超时(s)
+  #   encoder: auto                 # auto=GPU(hevc_nvenc)优先,不可用自动回退 CPU(libx265)
+  #   audio_enabled: false          # true = 连设备的麦克风话题,PCM 落 wav(需设备端支持)
+  #   open_timeout: 60              # open 阶段要走完时钟同步握手,给足余量
+  #   hz: 201                       # 轮询上限;每 poll 会排空接收缓冲

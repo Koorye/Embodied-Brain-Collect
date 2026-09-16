@@ -5,7 +5,8 @@
 #               指令屏按图纸所在场景目录 config.yaml 的场景/任务显示。
 #       tasks = 任务列表模式。队列来自 configs/tasks.yaml 随机采样;
 #               paradigm1 的指令屏显示任务库里的任务名。
-# stim: 刺激程序 kind(paradigm1 / sync_test),参数在 configs/stim.yaml。
-#       图纸模式下建议 paradigm1(sync_test 不消费场景/任务信息)。
+# stim: 刺激程序 kind(paradigm1 / simple / sync_test),参数在 configs/stim.yaml。
+#       图纸模式下建议 paradigm1(sync_test/simple 不消费场景/任务信息;
+#       simple 还要求 task-id,只在 tasks 模式可用)。
 mode: tasks
 stim: sync_test
