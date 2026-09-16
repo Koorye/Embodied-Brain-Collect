@@ -15,10 +15,13 @@
      关闭图纸 → launcher 启动(所有 recorder 多进程 + 刺激程序)→ 自动 QC;
      Esc 可在图纸阶段取消本次(不开录)
   3. 每张录完需输入 字母+Enter 确认,防止误触:
-     n = 保留下一张 / r = 重采本张 / q = 退出;输错字母要求重输
-     * 只有"保留"算采集成功:成功后图纸记入
-       configs/environments/used.json,之后不再被抽到;重采/退出不记账,
-       图纸留在池里。重采不删除本次录制目录(留档备查)
+     n = 当前采集成功,下一条 / r = 当前采集失败,重跑 / q = 成功并退出;
+     输错字母要求重输
+     * 结局写进该条 meta.yaml 的 status 字段(r → failed,n/q → success),
+       随数据目录走,打包/汇总据此识别单条数据的有效性
+     * 只有"成功"记入图纸台账 configs/environments/used.json,之后不再
+       被抽到;重跑/退出不记账,图纸留在池里。重跑不删除本次录制目录
+       (留档备查,meta 标记 failed)
   4. 全部图纸完成(或退出)后打印汇总(保留/重采/退出的录制都计入):
      无误数据的比例、每种 QC 错误/警告的数量与占比、各 session 时长与结局
   5. 录制前后出现错误时按设备给出排查指引(首次失败直接重采;多次失败
@@ -320,6 +323,25 @@ def _save_summary(summary: dict, session_root: Path) -> Path:
 # 交互
 # =============================================================================
 
+def _mark_meta(run_dir: Path, status: str) -> None:
+    """把本次采集的结局写进该 session 的 meta.yaml(status 字段)。
+
+    r(重采)→ failed;n/q → success。标记随数据目录走 —— 打包、汇总
+    不依赖班次根的 run_summary.json 也能识别单条数据的有效性。
+    """
+    import yaml
+    p = run_dir / "meta.yaml"
+    meta: dict = {}
+    if p.is_file():
+        try:
+            meta = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        except Exception:
+            meta = {}            # meta 坏了也要把结局记上
+    meta["status"] = status
+    p.write_text(yaml.safe_dump(meta, allow_unicode=True, sort_keys=False),
+                 encoding="utf-8")
+
+
 def _ask_next() -> str:
     """录制结束后的确认输入,防误触:必须输入 n/r/q 之一再回车。
 
@@ -327,7 +349,8 @@ def _ask_next() -> str:
     误触一下 Enter 不能直接吞掉一条录制。
     """
     while True:
-        ans = input("  输入 n(保留下一条) / r(重采本条) / q(退出),"
+        ans = input("  输入 n(当前采集成功,下一条) / "
+                    "r(当前采集失败,重跑) / q(成功并退出),"
                     "回车确认: ").strip().lower()
         if ans == "n":
             return "next"
@@ -558,8 +581,15 @@ def main(argv: list[str] | None = None) -> int:
                 findings += qc.get("findings", [])   # 会话级(如 StreamPresent)
                 n_err = sum(1 for f in findings if f.get("level") == "ERROR")
                 verdict = "无 ERROR" if n_err == 0 else f"{n_err} 条 ERROR"
-                print(f"  QC 判定: {qc.get('level')} ({verdict}) — "
-                      f"细节见 {run_dir / 'qc.html'}")
+                # qc.html 是 checker.yaml 的可选项(html:,默认开);关掉时
+                # 细节只在 qc_report.json 里
+                try:
+                    from embodied_brain_collect.session.config import load_checker
+                    html_on = (load_checker() or {}).get("html", True)
+                except FileNotFoundError:
+                    html_on = True
+                detail = run_dir / ("qc.html" if html_on else "qc_report.json")
+                print(f"  QC 判定: {qc.get('level')} ({verdict}) — 细节见 {detail}")
                 if n_err and not open_failures:
                     # 启动都没成功时 QC 缺流是必然,不再重复提示
                     qc_errs = _qc_slot_errors(qc)
@@ -577,15 +607,19 @@ def main(argv: list[str] | None = None) -> int:
                 choice = _ask_next()
             if choice == "rerun":
                 outcomes[run_dir.name] = "rerun"
-                print(f"  重采本项 — {run_dir.name} 留档不删除,马上重新录制 ...")
+                _mark_meta(run_dir, "failed")
+                print(f"  当前采集失败(meta 标记 failed)— {run_dir.name} "
+                      "留档不删除,马上重新录制 ...")
                 continue
             if choice == "quit":
                 outcomes[run_dir.name] = "quit"
+                _mark_meta(run_dir, "success")
                 interrupted = True
-                print(f"  退出本次会话 — {run_dir.name} 留档不删除")
+                print(f"  退出本次会话 — {run_dir.name} 已标记成功并留档")
                 break
 
             outcomes[run_dir.name] = "kept"
+            _mark_meta(run_dir, "success")
             kept_jobs.append(job)
             if job["mode"] == "env":
                 env.mark_used(job["rel"], session=str(run_dir))

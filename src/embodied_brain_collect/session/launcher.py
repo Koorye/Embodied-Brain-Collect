@@ -482,6 +482,13 @@ def run_qc(session_dir: Path) -> int:
                                     indent=2, default=str), encoding="utf-8")
     print(f"[launcher] QC 报告 -> {json_path}")
 
+    # qc.html 是可选项(checker.yaml `html:`,默认开):渲染要解码视频抽
+    # 缩略图、嵌入滤波副本,耗时且占体积;关掉后只留必选的 qc_report.json,
+    # 需要时用 scripts/qc_report.py <session> 手动补渲染。
+    if not checker_cfg.get("html", True):
+        print("[launcher] qc.html 已关闭(checker.yaml `html: false`)— 跳过渲染")
+        return 0
+
     try:
         html = build_page(report.to_dict(), session_dir, Options())
         html_path = session_dir / "qc.html"

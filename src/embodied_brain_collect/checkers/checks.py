@@ -618,6 +618,8 @@ class VideoDecode:
     diffs: np.ndarray = None         # |frame - prev sampled frame|
     t_samp: np.ndarray = None        # timestamp per sampled frame
     n_window: int | None = None      # frames inside the run window
+    i0: int | None = None            # window's first frame, container index
+    i1: int | None = None            # window's last frame, container index
     opened: bool = True
 
 
@@ -662,6 +664,7 @@ def decode_video(mp4: Path, frame_ts, window: dict | None,
 
     out.n_frames = n
     out.n_window = (i1 - i0 + 1) if i0 is not None else None
+    out.i0, out.i1 = i0, i1
     out.lums = np.asarray(lums, dtype=np.float64)
     out.diffs = np.asarray(diffs, dtype=np.float64)
     out.t_samp = np.asarray(t_samp, dtype=np.float64)
@@ -703,8 +706,11 @@ class FrameCountMatch(_VideoCheck):
     """Container frames against timestamp count — a writer that fell behind
     drops frames silently, and only this comparison shows it.
 
-    录制器逐帧 1:1 写时间戳,帧数与时间戳数必须**严格相等**;任何不等都
-    是录制中断/丢帧 ⇒ **ERROR**(视频不可信)。
+    窗口模式做**覆盖检查**:窗口内的时间戳要求容器真正提供第 i0..i1 帧,
+    用实际解码出的帧数验证,不足的部分就是窗口内缺的帧 ⇒ ERROR。不能拿
+    序号算术(i1-i0+1)自己比自己 —— 那对截断完全失明(视频只剩 1 帧,
+    窗口比对照样 547==547)。窗口之前多余的帧(历史数据的预热)无害。
+    整文件模式:录制器逐帧 1:1 写时间戳,帧数与时间戳数严格相等。
     """
 
     def run(self, ctx: CheckContext) -> CheckOutput:
@@ -720,15 +726,29 @@ class FrameCountMatch(_VideoCheck):
         if s is None or s.n == 0:
             return out
         n_ts = s.n
-        # Inside a run window the comparison is window-vs-window; the total
-        # decoded count stays in the stats but is not what is compared.
-        n_frames = dec.n_window if dec.n_window is not None else dec.n_frames
-        out.stats.update({"n_timestamps": n_ts, "n_compared": n_frames})
-        missing = abs(n_frames - n_ts)
+        if dec.n_window is not None:
+            # 窗口实际需要的容器帧有 i1-i0+1 个,容器只提供到第
+            # n_frames 帧 —— 交不足的部分就是窗口内缺的帧
+            n_present = max(0, min(dec.n_frames - dec.i0,
+                                   dec.i1 - dec.i0 + 1))
+            missing = (dec.i1 - dec.i0 + 1) - n_present
+            out.stats.update({"n_timestamps": n_ts, "n_compared": n_present,
+                              "n_window": dec.n_window})
+            if missing == 0:
+                return out
+            out.findings.append(self.finding(
+                "ERROR",
+                f"视频只有 {dec.n_frames} 帧,时间戳窗口需要到第 "
+                f"{dec.i1 + 1} 帧(缺 {missing} 帧)— 录制中断/丢帧",
+                field=dec.file, observed=float(missing), threshold=0.0))
+            return out
+        # 整文件模式:严格相等(帧多 = 历史预热帧口径不一致,同样报)
+        missing = abs(dec.n_frames - n_ts)
+        out.stats.update({"n_timestamps": n_ts, "n_compared": dec.n_frames})
         if missing == 0:
             return out
         out.findings.append(self.finding(
-            "ERROR", f"视频帧数({n_frames})与时间戳数({n_ts})不一致"
+            "ERROR", f"视频帧数({dec.n_frames})与时间戳数({n_ts})不一致"
                      f"(差 {missing} 帧)",
             field=dec.file, observed=float(missing), threshold=0.0))
         return out
