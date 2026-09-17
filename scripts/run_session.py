@@ -19,7 +19,7 @@
      输错字母要求重输
      * 结局写进该条 meta.yaml 的 status 字段(r → failed,n/q → success),
        随数据目录走,打包/汇总据此识别单条数据的有效性
-     * 只有"成功"记入图纸台账 configs/environments/used.json,之后不再
+     * 只有"成功"记入图纸台账 configs/environments/<场景目录>/used.yaml,之后不再
        被抽到;重跑/退出不记账,图纸留在池里。重跑不删除本次录制目录
        (留档备查,meta 标记 failed)
   4. 全部图纸完成(或退出)后打印汇总(保留/重采/退出的录制都计入):
@@ -49,7 +49,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from embodied_brain_collect.session.config import (  # noqa: E402
-    load_session_run, load_tasks, task_name)
+    FRAMEWORK_KEYS, SESSION_RUN_KEYS, load_session_run, load_tasks,
+    task_name)
 from embodied_brain_collect.session import environment as env  # noqa: E402
 from embodied_brain_collect.session.launcher import (  # noqa: E402
     _recorder_names, _write_session_meta, launch, run_qc)
@@ -382,11 +383,12 @@ def _qc_slot_errors(qc: dict | None) -> dict[str, str]:
 # =============================================================================
 
 def record_one(session_root: Path, job: dict, stim: str,
-               args) -> tuple[Path, int]:
+               args, collect: dict | None = None) -> tuple[Path, int]:
     """录一个队列项,返回 (run_dir, launcher 返回码)。
 
     job: env 模式 = {"mode": "env", "rel": 图纸相对路径};
          tasks 模式 = {"mode": "tasks", "task_id": int, "task_name": str}。
+    collect: 采集信息(session.yaml + CLI 覆盖的解析结果),随 meta.yaml 固化。
 
     env 模式:正式开录前全屏显示图纸,采集员照图摆放实物,按 n + Enter
     关闭后才开录(未确认直接关窗 = 取消,返回码 2,未开录)。stim 指令屏
@@ -434,11 +436,14 @@ def record_one(session_root: Path, job: dict, stim: str,
 
     if mode == "env":
         _write_session_meta(run_dir, environment=job["rel"],
-                            recorders=_recorder_names(recs))
+                            recorders=_recorder_names(recs),
+                            collect_info=collect,
+                            layout=env.scene_layout(job["rel"]) or None)
         stim_cmd = build_stim_cmd(stim, environment=job["rel"])
     else:
         _write_session_meta(run_dir, task_id=job["task_id"],
-                            recorders=_recorder_names(recs))
+                            recorders=_recorder_names(recs),
+                            collect_info=collect)
         stim_cmd = build_stim_cmd(stim, task_id=job["task_id"])
 
     rc = 1
@@ -478,6 +483,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--stim", choices=sorted(STIM_KINDS), default=None,
                     help="刺激程序(缺省读 configs/session.yaml 的 stim,"
                          "再缺省 paradigm1);参数见 configs/stim.yaml")
+    ap.add_argument("--collector-id", default=None,
+                    help="采集编号(覆盖 configs/session.yaml 的 collector_id)")
+    ap.add_argument("--set", action="append", default=[],
+                    metavar="KEY=VALUE",
+                    help="覆盖/追加任意采集信息键,可多次(如 --set subject=XX);"
+                         "session.yaml 顶层除 mode/stim 外的键都是采集信息")
     args = ap.parse_args(argv)
 
     session_root = args.session_dir.resolve()
@@ -495,6 +506,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"未知 stim: {stim!r} (可用: {sorted(STIM_KINDS)})",
               file=sys.stderr)
         return 2
+
+    # ---- 0b. 采集信息:session.yaml 顶层除运行期开关/框架保留键外都是;
+    # CLI 逐键覆盖,优先级 yaml < --collector-id < --set(最后写 wins)。
+    # 场景名不在此列 —— 图纸模式以图纸 config.yaml 的 scene.name 为准
+    # (objects.jsonl)。打包后这些键平铺在 meta/collect_info.jsonl 顶层。
+    collect: dict = {k: v for k, v in run_cfg.items()
+                     if k not in SESSION_RUN_KEYS
+                     and k not in FRAMEWORK_KEYS and v is not None}
+    if args.collector_id is not None:
+        collect["collector_id"] = args.collector_id
+    for kv in args.set:
+        k, _, v = kv.partition("=")
+        k = k.strip()
+        if not k:
+            continue
+        if k in FRAMEWORK_KEYS or k in SESSION_RUN_KEYS:
+            print(f"[run_session] 忽略 --set {k}=… — 框架保留键不可覆盖",
+                  file=sys.stderr)
+            continue
+        collect[k] = v.strip()
 
     # ---- 1. 队列:env = 未采集图纸;tasks = tasks.yaml 随机采样 ----
     seed = args.seed if args.seed is not None else int(time.time())
@@ -529,7 +560,8 @@ def main(argv: list[str] | None = None) -> int:
         for i, job in enumerate(queue, 1):
             print(f"  {i:>3}. #{job['task_id']:<3} {job['task_name']}")
     print(f"{'─' * 68}")
-    print(f"[run_session] 模式={mode}  stim={stim}")
+    print(f"[run_session] 模式={mode}  stim={stim}"
+          + (f"  采集信息: {collect}" if collect else ""))
     try:
         input("按 Enter 开始采集(Ctrl+C 取消) ...")
     except KeyboardInterrupt:
@@ -552,7 +584,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"\n▶ 第 {task_no} 次录制 · 队列剩余 {remaining} · "
                   f"已完成 {len(kept_jobs)}/{len(queue)}")
 
-            run_dir, rc = record_one(session_root, job, stim, args)
+            run_dir, rc = record_one(session_root, job, stim, args, collect)
             runs.append(run_dir)
             outcomes[run_dir.name] = "-"   # 结局由下面的选择更新
             print(f"\n[run_session] launcher 返回码 {int(rc)}"
@@ -615,7 +647,12 @@ def main(argv: list[str] | None = None) -> int:
                 outcomes[run_dir.name] = "quit"
                 _mark_meta(run_dir, "success")
                 interrupted = True
-                print(f"  退出本次会话 — {run_dir.name} 已标记成功并留档")
+                if job["mode"] == "env":
+                    env.mark_used(job["rel"], session=str(run_dir))
+                    print(f"  退出本次会话 — {run_dir.name} 已标记成功,"
+                          f"图纸 {job['rel']} 已记入台账")
+                else:
+                    print(f"  退出本次会话 — {run_dir.name} 已标记成功并留档")
                 break
 
             outcomes[run_dir.name] = "kept"

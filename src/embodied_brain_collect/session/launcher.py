@@ -419,9 +419,12 @@ def launch(
 
 def _write_session_meta(run_dir: Path, *, task_id: int | None = None,
                         environment: str | None = None,
-                        recorders: dict[str, str] | None = None) -> None:
+                        recorders: dict[str, str] | None = None,
+                        collect_info: dict | None = None,
+                        layout: dict | None = None) -> None:
     """Stamp the session dir with what produced it and what it contains."""
-    from embodied_brain_collect.session.config import load_meta, task_name
+    from embodied_brain_collect.session.config import (
+        load_collect, load_meta, task_name)
 
     try:
         meta = dict(load_meta())
@@ -440,6 +443,21 @@ def _write_session_meta(run_dir: Path, *, task_id: int | None = None,
         meta["environment"] = environment
     if recorders:
         meta["recorders"] = recorders
+    # 采集信息(collector_id 等操作员维护键,session.yaml 顶层 + run_session
+    # CLI 覆盖的解析结果)随开录固化为 meta.yaml 顶层字段 —— 打包时以这份
+    # 快照为准;未显式给时回退读 yaml(launcher 独立 CLI 路径)
+    if collect_info is None:
+        collect_info = load_collect()
+    if collect_info:
+        meta.update(collect_info)
+    # 图纸模式(config.yaml 属性 + placements.csv 位姿)随开录固化:
+    # task_name 两种模式都有(此处取图纸 config 的 task),scene/objects
+    # 仅图纸模式;打包时以这份快照为准
+    if layout:
+        if layout.get("task_name"):
+            meta.setdefault("task_name", layout["task_name"])
+        meta["scene"] = layout["scene"]
+        meta["objects"] = layout["objects"]
     import yaml
     (run_dir / "meta.yaml").write_text(
         yaml.safe_dump(meta, allow_unicode=True, sort_keys=False),
@@ -587,8 +605,11 @@ def main(argv: list[str] | None = None) -> int:
                                         slots=args.recorders)
 
     # ---- meta.yaml: version + what this run is ----
-    _write_session_meta(run_dir, task_id=task_id, environment=env_rel,
-                        recorders=_recorder_names(recs))
+    from embodied_brain_collect.session.environment import scene_layout
+    _write_session_meta(
+        run_dir, task_id=task_id, environment=env_rel,
+        recorders=_recorder_names(recs),
+        layout=(scene_layout(env_rel) or None) if env_rel else None)
 
     # ---- stim command ----
     stim_cmd = (build_stim_cmd(kind, task_id=task_id, environment=env_rel)

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import csv
 import random
 import re
 import time
@@ -111,8 +112,15 @@ class Environment:
     # ---- 场景信息 ------------------------------------------------------------
 
     def scene_config(self, rel: str) -> dict:
-        """图纸所在场景目录的 ``config.yaml``;缺失/损坏返回 {}。"""
-        cfg_path = self.path(rel).parent / "config.yaml"
+        """图纸所在场景目录的 ``config.yaml``(容忍 ``*_config.yaml`` 前缀
+        命名);缺失/损坏返回 {}。"""
+        directory = self.path(rel).parent
+        cfg_path = directory / "config.yaml"
+        if not cfg_path.is_file():
+            found = sorted(directory.glob("*_config.yaml"))
+            if not found:
+                return {}
+            cfg_path = found[0]
         try:
             return yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         except (OSError, yaml.YAMLError):
@@ -120,10 +128,96 @@ class Environment:
 
     @staticmethod
     def drawing_info(rel: str) -> dict:
-        """文件名 ``0001_combo006_r1.png`` → {num, combo, rep};不匹配则 {}。"""
-        m = re.match(r"(\d+)_combo(\d+)_r(\d+)$", Path(rel).stem)
+        """文件名 ``0001_combo006_r1.png`` → {num, combo, rep};不匹配则 {}。
+
+        绘图工具的导出模板可带场景前缀(``餐桌_保鲜盒_0001_combo015_r2``),
+        正则容忍任意非空前缀 —— 总览图(placements_overview 等)不含
+        combo 段,自然被排除。
+        """
+        m = re.match(r"(?:.+?_)?(\d+)_combo(\d+)_r(\d+)$", Path(rel).stem)
         return ({"num": int(m[1]), "combo": int(m[2]), "rep": int(m[3])}
                 if m else {})
+
+    def scene_layout(self, rel: str) -> dict:
+        """图纸对应的物体摆放:config.yaml 的静态属性 + placements.csv 位姿。
+
+        每个物体 = name/color/shape/dims(来自 config.yaml 的 objects 列表)
+        + cx/cy/ang(来自 placements.csv 中 ``num`` 匹配该图纸的那一行,
+        列名前缀为物体名)。返回 {task_name, scene, objects} —— 与开录时
+        固化进 session meta.yaml 的顶层字段一一对应(num/combo/rep 由图纸
+        文件名自带,不再重复存);
+        图纸名不合法 / 缺 config.yaml objects / 缺 placements.csv 或对应行
+        时返回 {} —— 调用方按空值跳过,不阻塞采集。
+        """
+        info = self.drawing_info(rel)
+        if not info:
+            return {}
+        cfg = self.scene_config(rel)
+        scene = cfg.get("scene") or {}
+        objects_cfg = scene.get("objects") or cfg.get("objects") or []
+        if not objects_cfg:
+            return {}
+        row: dict = {}
+        directory = self.path(rel).parent
+        csv_path = directory / "placements.csv"
+        if not csv_path.is_file():
+            found = sorted(directory.glob("*_placements.csv"))
+            if not found:
+                return {}
+            csv_path = found[0]
+        try:
+            with open(csv_path, encoding="utf-8-sig", newline="") as f:
+                for r in csv.DictReader(f):
+                    if str(r.get("num", "")).strip() == str(info["num"]):
+                        row = r
+                        break
+        except OSError:
+            return {}
+        if not row:
+            return {}
+
+        def _pose(name: str, key: str) -> float:
+            try:
+                return float(row.get(f"{name}_{key}", "") or 0.0)
+            except (TypeError, ValueError):
+                return 0.0
+
+        objs = []
+        for o in objects_cfg:
+            name = str(o.get("name", ""))
+            # 该图纸实际选中的物体变体 id:placements 的 ``{name}_obj`` 列,
+            # 形如 "保鲜盒#144d11b9-…"(# 前是物体名,# 后是变体 id);
+            # 旧场景没有这一列 → None
+            raw_obj = (row.get(f"{name}_obj") or "").strip()
+            obj_id = (raw_obj.split("#", 1)[1].strip() if "#" in raw_obj
+                      else raw_obj or None)
+            # 槽位组:shape/color/dims/material 以命中的 candidate 为准
+            #(顶层对象只是默认值,同一名字下不同变体形状尺寸各不相同);
+            # 没配槽位或 id 未命中 → 回退物体自身默认
+            cand = next((c for c in (o.get("slot") or {}).get("candidates") or []
+                         if obj_id and c.get("obj_id") == obj_id), {})
+
+            def pick(key, default=None, _c=cand, _o=o):
+                if _c.get(key) is not None:
+                    return _c[key]
+                if _o.get(key) is not None:
+                    return _o[key]
+                return default
+
+            objs.append({
+                "name": name,
+                "id": obj_id,
+                "color": pick("color", row.get(f"{name}_color") or None),
+                "shape": pick("shape", "box"),
+                "dims": dict(pick("dims") or {}),    # 键随 shape 走(box=w/l/h, cyl=d/h)
+                "material": pick("material"),
+                "cx": _pose(name, "cx"),
+                "cy": _pose(name, "cy"),
+                "ang": _pose(name, "ang"),
+            })
+        return {"task_name": str(cfg.get("task", "")),
+                "scene": str(scene.get("name", "")),
+                "objects": objs}
 
     def scene_title(self, rel: str) -> str:
         """指令屏标题:场景名 + 图纸编号,如 ``餐桌 · 图纸0001 (combo 6, rep 1)``。"""
@@ -250,6 +344,10 @@ def scene_config(rel: str) -> dict:
 
 def drawing_info(rel: str) -> dict:
     return _environment.drawing_info(rel)
+
+
+def scene_layout(rel: str) -> dict:
+    return _environment.scene_layout(rel)
 
 
 def scene_title(rel: str) -> str:

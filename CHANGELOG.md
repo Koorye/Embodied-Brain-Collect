@@ -1,6 +1,97 @@
 # 修改记录
 
-## 1.2.1 — 未发布
+## 1.3.0 — 2026-09-17
+
+### 数据集元数据:collect_info.jsonl 成为唯一边车,info.json 不再附加字段(pack_daily)
+
+* info.json 保持 mf_lerobot 写下的 LeRobot 标准字段(fps/特征表)——
+  pack_daily/pack_daily_fast 不再往里写 `collect_version`/`hardware`。
+* `meta/collect_info.jsonl` 成为元数据边车,一行一个 episode,顶层平铺
+  全部额外信息:`episode_index`、`session`、`collect_version` 采集程序
+  版本、`hardware` 该会话实际采集的槽位→设备显示名(逐会话,不再是
+  跨会话并集)、`collector_id` 等操作员维护键、`status` 录制结局
+  (success/failed)、`task_name`(两种模式都有)、`scene`/`objects`
+  图纸物体摆放(tasks 模式为 null)。
+* 中间形态 objects.jsonl 撤销,内容并入本文件。
+
+### 采集信息与图纸台账(run_session)
+
+* `configs/session.yaml` 顶层维护操作员采集信息(`collector_id` 编号等;
+  `mode`/`stim` 与框架保留键之外的顶层键都算,键不设 schema 可自由增减;
+  避开 YAML 布尔词 yes/no/on/off —— `no:` 会被解析成 False)。
+  **run_session 全部参数支持命令行覆盖**:`--collector-id` / `--set 键=值`
+  (可多次;优先级 yaml < `--collector-id` < `--set`),启动横幅打印解析
+  结果。开录时 launcher 把解析结果固化为该 session meta.yaml 的顶层
+  字段 —— 录制时快照,之后改 session.yaml/换 CLI 参数不影响已录数据。
+* 结算分支 q(成功并退出)原来漏记图纸台账:只有 n(保留)调
+  `mark_used`,q 只标 `status: success`,成功采集的图纸下次还会被抽到。
+  现在 q 与 n 一致:图纸模式记入该场景目录 `used.yaml` 并打印确认。
+
+### session meta.yaml 新格式:task_name/scene/objects 顶层平铺(图纸模式)
+
+* 开录固化字段重排:`task_name` **两种模式都有**(图纸模式取图纸
+  config.yaml 的 `task`,任务模式仍取 tasks.yaml);`scene`(config.yaml
+  的 `scene.name`)与 `objects`(**直接是物体列表**)仅图纸模式;
+  num/combo/rep 不再重复存 —— 图纸号由 environment 文件名自带。
+* 每个物体 = `name`/`color`/`shape`/`dims`(config.yaml)+ `cx`/`cy`/
+  `ang`(placements.csv 中 num 匹配该图纸的行)+ `id` 与 `material`。
+* **槽位组**:带 `slot.candidates` 的物体(如同名保鲜盒的 box/cyl 两种
+  变体),顶层属性只是默认值 —— 按 placements 的 `{name}_obj` 列
+  (`保鲜盒#<id>`)命中候选变体,shape/color/dims/material 一律以变体
+  为准(未命中/无槽位回退物体自身默认;旧场景无该列时 id 为 null)。
+* 打包兼容:旧会话的包壳快照(task/scene/num/combo/rep/objects)自动
+  拆包,更旧的按 meta 里 environment 路径按当前 configs 原地重建。
+
+### 图纸文件名容忍场景前缀(environment)
+
+* 绘图工具的导出模板(`nameTpl: {scene}_{task}_...`)会给图纸与配置文件
+  带场景名前缀(`餐桌_保鲜盒_0001_combo015_r2.png`、
+  `餐桌_保鲜盒_config.yaml`、`餐桌_保鲜盒_placements.csv`),框架原来按
+  裸名 `NNNN_comboNNN_rN.png`/`config.yaml`/`placements.csv` 查找,整个
+  场景池直接为空。现在:`drawing_info` 的正则容忍任意非空前缀(总览图
+  不含 combo 段仍被排除);`scene_config`/`scene_layout` 在精确名缺失时
+  回退 `*_config.yaml`/`*_placements.csv`。台账键 = 实际文件名,不受影响。
+
+### 新增 scripts/check_emg.py — EMG 左右手对应检查
+
+* 实时显示左右两条 EMG 臂环(recorders.yaml 的 emg_left/emg_right 槽位,
+  `--left-port/--right-port` 可临时指定串口)各 8 通道的滚动波形,绿=左
+  橙=右,附活动值与帧率读数。操作流程全在窗口内:L 晃动左手 → R 晃动
+  右手,各采一个窗口(`--seconds`,默认 3 s)自动对照两侧肌电活动量,
+  给出"对应 ✓ / 疑似接反 ✗ / 活动不明显"提示;肉眼复核波形后 Y 确认
+  退出(码 0),Q 放弃(码 1)。单事件循环,提示期窗口不冻结。
+* 不经 recorder 落盘:直接驱动 weili_emg 的 open/poll(preflight 同款),
+  临时目录不产生 npz。串口打不开时给可读报错并退出码 1(含
+  SerialException 接住)。
+
+### intan 修复与猴台架适配(eeg)
+
+* **移除 open 服务器自愈**:"3s 无波形数据就 disconnect→connect 重启
+  RHX TCP 波形服务器"的自愈段删除(连同 `_wait_first_block`):流确认
+  统一归 launcher 的确认阶段(`_wait_data_flowing`),recorder 的 open
+  只管连接与配置,与 blackrock/curry 同构。
+* **`_data_connect` 方法名笔误修复**:open 调用的是不存在的
+  `_connect_data_stream`,`except Exception` 把它吞成 "no attribute"
+  —— intan 在本线上从未成功 open 过。已改回正确名字,失败路径给干净的
+  连接错误。
+* **digital_map 默认启用猴台架接线映射**:`IntanEegRecorderConfig.
+  digital_map` 默认 `{"0x4000": 16, "0x2000": 32}`(实测接线 box
+  bit4→DIN14、bit5→DIN13),simple/paradigm1 的 16/32 边界码经查表还原
+  后才能进 EEG 对齐拟合;接线改动在 recorders.yaml 覆盖。dataclass 字段
+  经 `field(default_factory=…)` 给默认(dict 实例直接作默认值会在
+  import 时抛 ValueError)。
+
+### qc.html 支持设置降采样系数(qc_payload)
+
+* 新增 checker.yaml 配置 ``html_max_pts_per_s``(点/秒,默认 0 = 不降采样,
+  v1.1.0 全分辨率策略不变)。系数为正时,密度超过 ``时长 × 系数`` 的序列
+  在编码前做 min/max 包络降采样 —— 尖峰不丢(孤立毛刺就是一两个样本宽,
+  逐桶取极值都能存活),只影响页面,NPZ 原始数据从不改写。实测 30 kHz
+  × 10 s 的序列:系数 0 为 2.3 MB/30 万点,系数 1000 为 78 KB/1 万点,
+  尖峰无损。低于预算或不足 ``MIN_PTS``(600)的序列不受影响,逐样本
+  缩放照旧;``uniform_ts`` 的 stride 只在未降采样时发(降采样后 x 间距
+  不规则,series() 内强制,不再依赖调用方约定)。`series()` 的显式
+  ``max_pts`` 参数仍是最高优先级,fine-EMG 等既有用法不受影响。
 
 ### 深度视频不再进黑屏检查(camera checker)
 
@@ -13,15 +104,6 @@
   `video="frames.mp4"`,深度流不做黑屏/冻结检查;FrameCountMatch 的比对
   对象(RGB 时间戳)与视频文件也从此一一对应,不再张冠李戴。RGB-only
   相机行为不变。
-
-### intan digital_map 默认启用猴台架接线映射(eeg_recorder_config)
-
-* `IntanEegRecorderConfig.digital_map` 从 `None`(直接用字值)改为默认
-  `{"0x4000": 16, "0x2000": 32}` —— 猴台架的实测接线(box bit4→DIN14,
-  bit5→DIN13,码16→0x4000、码32→0x2000),simple/paradigm1 的 16/32
-  边界码经 digital_map 还原后才能进 EEG 对齐拟合。接线改动或换台架在
-  recorders.yaml 里覆盖。注意:dataclass 字段经 `field(default_factory=…)`
-  给默认(dict 实例直接作默认值会在 import 时抛 ValueError)。
 
 ### 多 COM 口 TTL、simple_stim 接入、头环 config 接入(自 monkey 线合入)
 
@@ -49,27 +131,13 @@
   schema/时钟/QC 三个测试按新契约更新。
 * 不合入:YOLO 离线手部检测、任务库/任务流程改动。
 
-### 移除 intan open 的服务器自愈(intan_eeg_recorder)
-
-* open 里"3s 无波形数据就 disconnect→connect 重启 RHX TCP 波形服务器、
-  再等预算用尽"的自愈整段删除(连同 `_wait_first_block`):流确认统一
-  归 launcher 的确认阶段(`_wait_data_flowing`),recorder 的 open 只管
-  连接与配置,与 blackrock/curry 同构。服务器挂死时表现为确认阶段
-  无数据,不再有 open 内的重启旁路。
-
-### meta 附每个 episode 的 qc report,hardware 只列实际槽位(pack_daily)
+### meta 附每个 episode 的 qc report(pack_daily)
 
 * 打包结束时把每个 episode 对应源会话的 `qc_report.json` 原文汇总写进
   数据集 `meta/qc_reports.jsonl`(一行一个 episode:`episode_index`、
   `session` 源会话名、`level` 整体等级、`qc_report` 报告全文,
   findings/streams 明细全保留,约 30KB/集),QC 结论随数据走,不用回
   源目录查。`pack_daily_fast` 同步。
-* `info.json` 的 `hardware` 原来用 `DEFAULT_RECORDER_NAMES` 全表预填,
-  某天没采的模态(如 wristband、ego_headband)也带着默认显示名混进去。
-  改为只列实际出现的槽位(会话里真实存在的槽位目录 ∪ meta.yaml
-  recorders 显式声明),默认表仅作名字回退。已打包的
-  `session-day/2026-09-16-08-57-22-11-10-32` 的 info.json 与
-  qc_reports.jsonl 已就地补齐。
 
 ### `scripts/pack_daily_fast.py` — 打包多进程加速版
 
@@ -157,7 +225,8 @@ RUN_START 钉在 t=0,起始事件不再丢失。
   找无扩展名文件、Linux 反而兜底找 .exe);`ffmpeg_writer._find_ffmpeg`
   的系统 PATH 查找被注释掉(Linux 上 Exec format error),一并恢复。
 
-## 1.2.0 — 未发布
+
+## 1.2.0 — 2026-09-16
 
 ### 图纸模式(采集队列由图纸驱动)
 

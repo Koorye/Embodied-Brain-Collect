@@ -50,7 +50,7 @@ from pack_daily import (  # noqa: E402
     filter_qc_errors, find_sessions, load_marker_window,
     load_parquet_streams, load_stream_index, load_task_label,
     make_master_timeline, probe_video_shape, rename_out_by_span,
-    video_feature_key, write_qc_meta,
+    video_feature_key, write_collect_meta, write_qc_meta,
 )
 from mf_lerobot import MultiFrequencyLeRobotDataset  # noqa: E402
 from mf_lerobot.utils import (  # noqa: E402
@@ -484,11 +484,8 @@ def main(argv: list[str] | None = None) -> int:
             features=specs, root=args.out, use_videos=True,
         )
 
-        # 数据集 meta:采集程序版本 + 每槽位硬件显示名
-        import embodied_brain_collect
-        ds.meta.info["collect_version"] = embodied_brain_collect.__version__
-        ds.meta.info["hardware"] = _hardware_names([i["dir"] for i in sessions])
-        write_info(ds.meta.info, ds.root)
+        # info.json 保持 mf_lerobot 写下的 LeRobot 标准字段 —— 额外信息
+        # 一律进 meta/collect_info.jsonl(与原版一致)
 
         video_keys = [k for k, ft in specs.items() if ft.get("dtype") == "video"]
         from embodied_brain_collect.session import environment as env_mod
@@ -554,6 +551,8 @@ def main(argv: list[str] | None = None) -> int:
 
             # meta 附上每个 episode 的 qc report(源会话 qc_report.json)
             write_qc_meta(args.out, sessions)
+            # meta 附上每个 episode 的采集信息(源会话 meta.yaml 的 collect)
+            write_collect_meta(args.out, sessions)
 
     print(f"[done] {ds.meta.total_episodes} episodes, "
           f"{ds.meta.total_frames} frames → {args.out}")

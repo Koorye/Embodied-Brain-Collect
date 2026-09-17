@@ -8,5 +8,15 @@
 # stim: 刺激程序 kind(paradigm1 / simple / sync_test),参数在 configs/stim.yaml。
 #       图纸模式下建议 paradigm1(sync_test/simple 不消费场景/任务信息;
 #       simple 还要求 task-id,只在 tasks 模式可用)。
-mode: tasks
-stim: sync_test
+mode: env
+stim: paradigm1
+
+# 采集信息(操作员维护):顶层除 mode/stim 外的键都是 —— 每次开录抄进该
+# session 的 meta.yaml 固化,打包时 pack_daily 汇总进数据集
+# meta/collect_info.jsonl;以录制时快照为准,之后改这里不影响已录数据。
+# 全部键可用 run_session 命令行覆盖(--collector-id / --set 键=值,
+# 可多次);
+# 键名避开 YAML 布尔词(yes/no/on/off/true/false)。
+# 场景名不在这里维护 —— 图纸模式下以图纸 config.yaml 的 scene.name 为准,
+# 打包时随 meta/objects.jsonl 逐 episode 记录。
+collector_id: 1      # 采集编号(第几次采集/批次号)

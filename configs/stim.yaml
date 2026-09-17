@@ -11,7 +11,7 @@ baud: 115200
 hold_s: 0.020             # 串口脉冲保持时间
 udp_host: "127.0.0.1"     # UDP 标记(给 marker recorder)
 udp_port: 9999
-serial: true              # 是否写串口 TTL
+serial: false              # 是否写串口 TTL
 
 # ---- paradigm1_pickplace ----
 paradigm1:

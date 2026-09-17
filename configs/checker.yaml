@@ -5,6 +5,12 @@
 # qc_report.json,需要看页面时用 scripts/qc_report.py <session> 手动渲染。
 html: false
 
+# html 降采样系数(点/秒):序列密度超过 时长×系数 的,编码前做 min/max
+# 包络降采样(尖峰不丢),只影响页面,NPZ 原始数据从不改写。0 = 不降采样
+# (默认,逐样本全保留);高 rate 流(30 kHz EEG / 1000 Hz EMG)把 qc.html
+# 撑到上百 MB 时设成 1000 量级。低于 时长×系数 或不足 600 点的序列不受影响。
+html_max_pts_per_s: 500
+
 timestamp_gap:
   min_s: 0.1              # 缺口超过此秒数 -> ERROR
 

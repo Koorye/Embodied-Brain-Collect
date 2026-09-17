@@ -71,6 +71,31 @@ def load_session_run() -> dict:
         return yaml.safe_load(f) or {}
 
 
+#: session.yaml 里属于运行期开关的键,不算采集信息
+SESSION_RUN_KEYS = ("mode", "stim")
+
+#: session meta.yaml 的框架保留键 —— 采集信息不得占用;打包时也从信息
+#: 集中剔除(其余键视为操作员维护的采集信息)
+FRAMEWORK_KEYS = frozenset({
+    "version", "framework", "collect_version", "session_dir", "started_at",
+    "task_id", "task_name", "environment", "recorders", "objects",
+})
+
+
+def load_collect() -> dict:
+    """session.yaml 顶层除运行期开关与框架保留键外的所有键 = 采集信息。
+
+    编号(collector_id)等由操作员维护,键不设 schema —— 写什么数据集就
+    带什么。开录时随 session 固化为 meta.yaml 的顶层字段(launcher 抄写),
+    打包时由 pack_daily 汇总进 meta/collect_info.jsonl(同样顶层平铺,
+    不嵌套)。run_session 的 CLI(--collector-id/--set)可逐键覆盖。
+    缺失返回 {}。
+    """
+    return {k: v for k, v in load_session_run().items()
+            if k not in SESSION_RUN_KEYS and k not in FRAMEWORK_KEYS
+            and v is not None}
+
+
 @lru_cache(maxsize=None)
 def load_meta() -> dict:
     """Version / framework metadata, copied into each session dir."""

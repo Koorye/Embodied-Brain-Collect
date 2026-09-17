@@ -981,6 +981,100 @@ def write_qc_meta(out: Path, sessions: list[dict]) -> None:
     print(f"[meta] qc_reports.jsonl: {n_with}/{len(lines)} 个 episode 有报告")
 
 
+def write_collect_meta(out: Path, sessions: list[dict]) -> None:
+    """数据集的元数据边车:所有额外信息逐 episode 写 meta/collect_info.jsonl。
+
+    一行一个 episode,顶层平铺:
+
+    - ``episode_index`` / ``session``:与数据集 episode 对齐,session 为
+      源会话目录名;
+    - ``collect_version``:采集程序版本;
+    - ``hardware``:该会话实际采集的槽位 → 设备显示名(逐会话,不再是
+      跨会话并集);
+    - ``collector_id`` 等操作员维护键(session.yaml 顶层 + run_session CLI
+      覆盖的解析结果,框架保留键除外;旧会话包在 ``collect:`` 块下的键
+      自动解包);
+    - ``status``:录制结局(success/failed,来自 session meta.yaml);
+    - ``task_name``:两种模式都有(图纸模式取图纸 config.yaml 的 task);
+    - ``scene`` / ``objects``:图纸模式的物体摆放(scene = config.yaml 的
+      ``scene.name``;objects = 物体列表,name/color/shape/dims 来自
+      config.yaml,cx/cy/ang 来自 placements.csv。优先用开录时固化在
+      session meta.yaml 顶层的快照;旧会话的包壳快照自动拆包,再旧按
+      environment 路径重建);tasks 模式为 null。
+
+    info.json 保持 mf_lerobot 写下的 LeRobot 标准字段,不再携带任何额外
+    信息 —— 读数据集时以本文件为元数据入口。
+    """
+    from embodied_brain_collect.session import environment as env_mod
+    from embodied_brain_collect.session.config import FRAMEWORK_KEYS
+
+    src = PROJECT_ROOT / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    import embodied_brain_collect
+
+    # 单独处理、不进"其余操作员键"循环的 meta 键
+    _special = {"collect", "objects", "status"}
+
+    lines = []
+    for i, info in enumerate(sessions):
+        meta: dict = {}
+        p = info["dir"] / "meta.yaml"
+        if p.exists():
+            try:
+                meta = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+
+        line = {
+            "episode_index": i,
+            "session": info["dir"].name,
+            "collect_version": embodied_brain_collect.__version__,
+            "hardware": _hardware_names([info["dir"]]),
+        }
+        for k, v in meta.items():
+            if k not in FRAMEWORK_KEYS and k not in _special and v is not None:
+                line[k] = v
+        legacy = meta.get("collect")         # 旧方案:包在 collect 块下的键解包并入
+        if isinstance(legacy, dict):
+            for k, v in legacy.items():
+                line.setdefault(k, v)
+        line["status"] = meta.get("status")
+
+        # 场景与物体摆放:新快照 = meta 顶层 scene/objects(list)/task_name;
+        # 旧快照 = objects 包了一层(task/scene/num/combo/rep/objects);
+        # 都没有时按 environment 路径按当前 configs 原地重建
+        scene = meta.get("scene")
+        task_name = meta.get("task_name")
+        objects = meta.get("objects")
+        if isinstance(objects, dict):        # 旧快照格式
+            scene = scene or objects.get("scene")
+            task_name = task_name or objects.get("task")
+            objects = objects.get("objects")
+        if not isinstance(objects, list):
+            objects = None
+        if objects is None and meta.get("environment"):
+            layout = env_mod.scene_layout(meta["environment"]) or None
+            if layout:
+                scene = scene or layout["scene"]
+                task_name = task_name or layout["task_name"]
+                objects = layout["objects"]
+        line["scene"] = scene or None
+        line["objects"] = objects
+        line["task_name"] = task_name or None
+        lines.append(json.dumps(line, ensure_ascii=False))
+
+    meta = out / "meta"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "collect_info.jsonl").write_text("\n".join(lines) + "\n",
+                                             encoding="utf-8")
+    n_status = sum(1 for l in lines if json.loads(l)["status"])
+    print(f"[meta] collect_info.jsonl: {len(lines)} 个 episode "
+          f"(status 已标 {n_status})")
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
@@ -1172,13 +1266,8 @@ def main(argv: list[str] | None = None) -> int:
         features=specs, root=args.out, use_videos=True,
     )
 
-    # 数据集 meta:采集程序版本 + 每槽位硬件显示名
-    sys.path.insert(0, str(PROJECT_ROOT / "src"))
-    import embodied_brain_collect
-    from mf_lerobot.utils import write_info
-    ds.meta.info["collect_version"] = embodied_brain_collect.__version__
-    ds.meta.info["hardware"] = _hardware_names([i["dir"] for i in sessions])
-    write_info(ds.meta.info, ds.root)
+    # info.json 保持 mf_lerobot 写下的 LeRobot 标准字段 —— 采集版本/硬件/
+    # 采集信息等额外信息一律进 meta/collect_info.jsonl(见 write_collect_meta)
 
     video_keys = [k for k, ft in specs.items() if ft.get("dtype") == "video"]
     from embodied_brain_collect.session import environment as env_mod
@@ -1197,6 +1286,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # meta 附上每个 episode 的 qc report(源会话 qc_report.json)
     write_qc_meta(args.out, sessions)
+    # meta 附上每个 episode 的采集信息(session.yaml 顶层键 + CLI 覆盖快照)
+    write_collect_meta(args.out, sessions)
 
     print(f"[done] {ds.meta.total_episodes} episodes, "
           f"{ds.meta.total_frames} frames → {args.out}")

@@ -212,6 +212,10 @@ python scripts/preflight.py
 
 # 相机体检:每个相机开一个窗口,核对画面与编号
 python scripts/check_cameras.py          # --list 只列设备,--idx 2 只看某一路
+
+# EMG 左右手对应检查:窗口实时显示双手 8 通道波形,
+# 按 L/R 分别晃动左/右手,自动对照 + 肉眼核对,无接反后 Y 退出
+python scripts/check_emg.py              # --list 只列左右槽位配置
 ```
 
 预检全绿再开始采集。任一设备失败：按提示拔插/重启对应设备后重跑，
@@ -307,9 +311,14 @@ python scripts/pack_daily.py --max-episodes 2   # 试打包前 2 个会话
   追踪器的位姿、marker 事件码——各传感器保持**原生采样率**独立存储
 * 额外派生两个策略训练特征（58 维，设备位姿 ×3 + 40 手部关节）：
   `observation.state` 与 `action`
-* meta 的 `info.json` 记录 `collect_version`（采集程序版本）与
-  `hardware`（每槽位设备显示名；新版 session meta 已有，旧数据回退
-  默认设备表；只列本次实际采集的槽位）
+* `info.json` 保持 LeRobot 标准字段（fps/特征表等）——**所有额外信息**
+  都在 `meta/collect_info.jsonl`（逐 episode 顶层平铺）：`collect_version`
+  采集程序版本、`hardware` 该会话实际采集的槽位→设备显示名、
+  `collector_id` 等操作员维护键（`configs/session.yaml` 顶层维护，
+  `run_session --collector-id / --set` 可覆盖）、`status` 录制结局
+  （success/failed）、`task_name`（两种模式都有）、`scene` 场景名与
+  `objects` 物体列表（图纸模式：name/color/shape/dims 来自图纸
+  `config.yaml`，cx/cy/ang 来自 `placements.csv`；tasks 模式为 null）
 * meta 的 `qc_reports.jsonl` 逐 episode 附上源会话的 **QC 报告原文**
   （`session` 源会话名、`level` 整体等级、`qc_report` 含 findings/streams
   明细），QC 结论随数据集走
@@ -318,9 +327,10 @@ python scripts/pack_daily.py --max-episodes 2   # 试打包前 2 个会话
 
 ```
 data/lerobot/2026-09-15-100029-100521/
-├── meta/info.json          # fps、特征表、collect_version、hardware
+├── meta/info.json          # fps、特征表(LeRobot 标准字段)
 ├── meta/tasks.jsonl        # 任务列表
 ├── meta/qc_reports.jsonl   # 每 episode 的源会话 QC 报告原文
+├── meta/collect_info.jsonl # 每 episode 的全部额外信息(版本/硬件/采集信息/结局/场景/物体)
 ├── data/chunk-000/         # 每特征一个 parquet(时间索引)
 │   ├── episode_000000/observation.state.parquet
 │   ├── episode_000000/observation.wristband_ppg.parquet
@@ -451,6 +461,7 @@ QC 结论不改变录制结果，只供参考。
 | `scripts/session_summary.py` | 现有数据汇总：产量、任务覆盖、质量问题统计 |
 | `scripts/preflight.py` | 预检：逐 recorder 打开 + 数据流探测，输出分设备排查建议 |
 | `scripts/check_cameras.py` | 相机体检：枚举 + 实时画面 |
+| `scripts/check_emg.py` | EMG 左右手对应检查：实时显示双手 8 通道波形，按 L/R 晃动左/右手自动对照活动量，肉眼复核后确认（不经 recorder 落盘） |
 | `scripts/qc.py` / `qc_report.py` | 手动 QC / 生成 qc.html |
 | `scripts/rebuild_emg_timestamps.py` | 旧 session 的 EMG 时间戳回填（默认 dry-run，`--write` 生效） |
 | `scripts/update_meta_names.py` | 历史数据 meta 补齐/更新各槽位设备显示名（名源 = recorders.yaml 的 `name`；默认 dry-run 预览效果直接生效，`--dry-run` 只看） |

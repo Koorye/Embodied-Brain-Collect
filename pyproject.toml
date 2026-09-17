@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embodied-brain-collect"
-version = "1.2.1"
+version = "1.3.0"
 description = "Multi-modal data collection framework (Neon eye, cameras, EMG, gloves, position, markers)"
 requires-python = ">=3.10"
 

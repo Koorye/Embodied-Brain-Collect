@@ -384,7 +384,7 @@ class IntanEegRecorder(BaseEegRecorder):
         # status 已是 connect 也照常连。流是否真的在发由 launcher 的
         # 确认阶段判断。
         if cfg.start_data_server:
-            self._connect_data_stream()
+            self._data_connect()
 
         # 解析器按 RHX 确认使能的通道数建 —— 头戴通道数配错也不会失步
         self._channel_labels = confirmed + (["Trigger"] if digital_ok else [])

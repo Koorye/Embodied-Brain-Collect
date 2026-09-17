@@ -23,6 +23,22 @@ from embodied_brain_collect.visualizers.qc_streams import (_sampling_rate,
 SESSION4 = Path(__file__).resolve().parents[2] / "data" / "session4"
 
 
+@pytest.fixture(autouse=True)
+def _pin_density_cap_off(tmp_path, monkeypatch):
+    """载荷机制类测试不随部署配置漂移:一律钉在系数 0。
+
+    降采样系数本身的行为由 density_cap 夹具的三个专测覆盖(它们在用例内
+    覆盖本夹具的环境)。
+    """
+    (tmp_path / "checker.yaml").write_text("html_max_pts_per_s: 0\n",
+                                           encoding="utf-8")
+    monkeypatch.setenv("EMBODIED_BRAIN_COLLECT_CONFIGS", str(tmp_path))
+    from embodied_brain_collect.session.config import load_checker
+    load_checker.cache_clear()
+    yield
+    load_checker.cache_clear()
+
+
 def decode(s, key="y", lo="lo", hi="hi") -> np.ndarray:
     q = np.frombuffer(base64.b64decode(s[key]), dtype=np.int16).astype(float)
     return np.where(q == -32768, np.nan,
@@ -284,10 +300,59 @@ def test_rows_emg_notch_kills_50hz_with_skewed_timestamps():
 
 
 def test_target_points_floor():
-    """v1.1.0:不降采样,预算 = 样本数本身。"""
+    """系数缺省为 0:不降采样,预算 = 样本数本身。"""
     t = np.arange(0, 24.0, 1 / 1000)
     assert target_points(t) == len(t)              # 全分辨率
     assert target_points(np.arange(5.0)) == 5      # 短序列也全保留
+
+
+@pytest.fixture
+def density_cap(tmp_path, monkeypatch):
+    """把临时目录设为 configs 根并写入 html_max_pts_per_s;用完清缓存。"""
+    from embodied_brain_collect.session.config import load_checker
+
+    def _set(value):
+        (tmp_path / "checker.yaml").write_text(
+            f"html_max_pts_per_s: {value}\n", encoding="utf-8")
+        monkeypatch.setenv("EMBODIED_BRAIN_COLLECT_CONFIGS", str(tmp_path))
+        load_checker.cache_clear()
+
+    yield _set
+    load_checker.cache_clear()
+
+
+def test_density_cap_downsamples_only_dense_series(density_cap):
+    """系数 1000:30 kHz 序列压进预算、min/max 包络保尖峰、stride 被禁。"""
+    density_cap(1000)
+    t = np.arange(30001) / 30000.0                 # 30 kHz × 1 s(含两端)
+    y = np.sin(t * 2 * np.pi * 50)
+    y[12345] += 100.0                              # 孤立尖峰
+    assert target_points(t) == 1000                # 时长 × 系数(≥ MIN_PTS)
+
+    s = series(t, y, uniform_ts=True)
+    yd = decode(s)
+    assert yd.size <= 1000                         # 压进预算
+    assert yd.max() > 90                           # 包络:尖峰存活
+    assert "tstride" not in s                      # 降采样后禁 stride,发全量 t
+
+
+def test_density_cap_leaves_sparse_series_alone(density_cap):
+    """低于预算的序列逐样本保留,stride 照常可用。"""
+    density_cap(1000)
+    t = np.arange(0, 1.0, 1 / 30)                  # 30 Hz × 1 s = 30 点
+    y = np.linspace(-1, 1, t.size)
+    s = series(t, y, uniform_ts=True)
+    assert decode(s).size == t.size
+    assert s.get("tstride")
+
+
+def test_density_cap_zero_keeps_every_sample(density_cap):
+    """系数 0(默认):显式关掉,30 kHz 也全保留。"""
+    density_cap(0)
+    t = np.arange(0, 1.0, 1 / 30000)
+    s = series(t, t * 2, uniform_ts=True)
+    assert decode(s).size == t.size
+    assert s.get("tstride")
 
 
 # =============================================================================

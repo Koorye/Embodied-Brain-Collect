@@ -18,9 +18,14 @@ Two reductions still apply:
 * **pre-reduction of the giant arrays** — 115700x50x3 of skeleton is a
   centroid and a mean node speed; nobody can read 50 joints at once anyway.
 
-Every series keeps every sample: decimation (min/max envelopes at 100 pts/s)
-was dropped in v1.1.0 so the page can zoom into per-sample detail.  A uniform
-x axis is shipped as a stride instead of one float per point when possible.
+* **display density cap** — 系数 ``html_max_pts_per_s``(checker.yaml,
+  默认 0 = 关)为正时,密度超过 ``时长 × 系数`` 的序列在编码前做 min/max
+  包络降采样。NPZ 原始数据从不改写;这只决定页面带货多少。低于预算的
+  序列仍逐样本,可放大到单样本细节。
+
+Every series at or under the budget keeps every sample, so ordinary streams
+zoom into per-sample detail.  A uniform x axis is shipped as a stride instead
+of one float per point when possible — only ever for an undecimated series.
 Series carry a *slot index*, never a hex colour, so the page can resolve them
 against whichever theme is active.
 """
@@ -31,11 +36,27 @@ import base64
 
 import numpy as np
 
-# v1.1.0: no decimation.  Every series keeps every sample — the point budget
-# is the sample count itself.  The old 100 pts/s min/max envelopes made the
-# page blind to anything finer than ~10 ms no matter how far you zoomed in.
-PTS_PER_SEC = 100        # kept only as a documented floor for opt-in coarse
-MIN_PTS = 600           # rendering via explicit max_pts (nothing uses it)
+# 显示密度上限(v1.2):超过该点/秒的序列在编码前做 min/max 包络降采样,
+# 只影响页面,NPZ 原始数据从不改写。默认 0 = 不降采样(v1.1.0 全分辨率
+# 策略);可在 configs/checker.yaml 的 ``html_max_pts_per_s`` 覆盖 ——
+# 高 rate 流(30 kHz EEG、1000 Hz EMG)的 qc.html 体积由它兜底。
+DEFAULT_MAX_PTS_PER_S = 0
+MIN_PTS = 600           # 密度上限的下限:极短序列(< 0.6 s)不全跟着变粗
+
+
+def max_pts_per_s() -> int:
+    """HTML 降采样系数:configs/checker.yaml 的 ``html_max_pts_per_s``。
+
+    0 或配置缺失 = 不降采样(全分辨率)。配置文件读不到时静默回退默认,
+    页面生成不该因为缺一份 yaml 而挂掉。
+    """
+    try:
+        from embodied_brain_collect.session.config import load_checker
+        v = int(load_checker().get("html_max_pts_per_s")
+                or DEFAULT_MAX_PTS_PER_S)
+    except (FileNotFoundError, TypeError, ValueError):
+        return DEFAULT_MAX_PTS_PER_S
+    return max(0, v)
 
 FRAME_FPS = 1.0         # thumbnails per second
 FRAME_W = 240           # thumbnail width, px
@@ -70,14 +91,20 @@ def encode_i16(y) -> tuple[str, float, float]:
 
 
 def target_points(t) -> int:
-    """Point budget for a series.
+    """Point budget for a series: the display density cap.
 
-    v1.1.0 policy: everything is kept, so the budget is the series itself.
-    ``PTS_PER_SEC``/``MIN_PTS`` remain only as a documented floor for any
-    future opt-in coarse rendering (pass an explicit ``max_pts`` to
-    ``series()`` to use them).
+    系数 ``max_pts_per_s()`` 为 0 时返回序列本身(全分辨率,逐样本缩放);
+    为正时预算 = ``时长 × 系数``,下限 ``MIN_PTS``。低于预算的序列
+    ``minmax_downsample`` 原样通过 —— 只有真正的高密度流(30 kHz EEG、
+    高率 EMG)被压缩,且只压进 HTML,NPZ 从不改写。调用方也可以给
+    ``series()`` 传显式 ``max_pts`` 覆盖这里的预算。
     """
-    return int(np.asarray(t, dtype=np.float64).size)
+    t = np.asarray(t, dtype=np.float64)
+    rate = max_pts_per_s()
+    if rate <= 0 or t.size == 0:
+        return int(t.size)
+    duration = max(float(t[-1] - t[0]), 0.0)
+    return max(MIN_PTS, int(duration * rate))
 
 
 def minmax_downsample(t, y, max_pts: int | None = None):
@@ -128,9 +155,16 @@ def series(t, y, *, label: str = "", slot: int = 1, unit: str = "",
            y_f: np.ndarray | None = None) -> dict | None:
     """One decimated, quantised trace.  None when there is nothing to draw.
 
-    ``uniform_ts`` may only be used when *t* is strictly uniform (no
-    decimation ran): the x axis then ships as a stride instead of one float32
-    per point, which at 2000 Hz over minutes is most of a trace's size.
+    Unless the caller passes an explicit ``max_pts``, the budget comes from
+    ``target_points`` —— 即 checker.yaml 的 ``html_max_pts_per_s`` 密度
+    上限;系数为 0(默认)时每序列全保留。
+
+    ``uniform_ts`` may only be used when *t* is strictly uniform **and no
+    decimation ran**: the x axis then ships as a stride instead of one
+    float32 per point, which at 2000 Hz over minutes is most of a trace's
+    size.  (Decimated series have irregular x spacing by construction —
+    the min/max buckets pick two samples per bucket — so the stride is
+    wrong for them and is skipped.)
 
     *y_f* is an optional filtered display copy (same length as *y*): it is
     quantised over its own range and carried as extra ``yf/flo/fhi`` keys,
@@ -141,17 +175,19 @@ def series(t, y, *, label: str = "", slot: int = 1, unit: str = "",
     y = np.asarray(y, dtype=np.float64)
     if t.size < 2 or t.size != y.size or not np.isfinite(y).any():
         return None
-    td, yd = minmax_downsample(t, y, max_pts)
+    budget = target_points(t) if max_pts is None else max_pts
+    td, yd = minmax_downsample(t, y, budget)
+    decimated = yd.size < y.size
     q, lo, hi = encode_i16(yd)
     out = {"label": label, "slot": slot, "unit": unit,
            "y": q, "lo": lo, "hi": hi}
     if y_f is not None:
         yf = np.asarray(y_f, dtype=np.float64)
         if yf.size == y.size and np.isfinite(yf).any():
-            yfd = minmax_downsample(t, yf, max_pts)[1]
+            yfd = minmax_downsample(t, yf, budget)[1]
             qf, flo, fhi = encode_i16(yfd)
             out["yf"], out["flo"], out["fhi"] = qf, flo, fhi
-    if uniform_ts:
+    if uniform_ts and not decimated:
         dt = np.diff(td)
         # Rebuilt timestamps carry float64's epoch-grid sawtooth (±0.12 us,
         # see timestamp_rebuild), and old fitted ones alternate between
