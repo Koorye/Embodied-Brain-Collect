@@ -35,3 +35,5 @@ tests/**/sessions/
 # ── third_party:闭源 SDK 与 ffmpeg/ffprobe 二进制不入库,经 GitHub
 #    Release 附件分发(单文件 ≤2GB),部署机下载解压到此处 ──
 third_party/
+
+config/environments/
