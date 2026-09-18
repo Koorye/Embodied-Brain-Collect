@@ -36,4 +36,4 @@ tests/**/sessions/
 #    Release 附件分发(单文件 ≤2GB),部署机下载解压到此处 ──
 third_party/
 
-config/environments/
+configs/environments/
