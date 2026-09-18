@@ -1300,6 +1300,13 @@ def _probe_session(sd: Path, video_slots, args) -> dict | None:
     返回 None = 该会话不可用(合成不出主时间轴或一个特征都没有)。
     """
     win = load_marker_window(sd) if not args.full else (None, None)
+    if not args.full and win[0] is None:
+        # 与 QC 同一硬门槛:没有 RUN_START/RUN_END 的会话不可对齐,绝不
+        # 静默回退相机区间打包(那会产出看似正常、实则无法对齐的数据)。
+        # --full 是显式全量模式,保持相机区间回退。
+        print(f"[error] 跳过 '{sd.name}': marker 无 RUN_START/RUN_END 窗口"
+              " — 无法对齐(数据需重采;确要全量打包用 --full)")
+        return None
     master_abs = make_master_timeline(win, sd, video_slots)
     if master_abs is None or not len(master_abs):
         print(f"[warn] 跳过 '{sd.name}': 无 marker 窗口且无相机帧,"

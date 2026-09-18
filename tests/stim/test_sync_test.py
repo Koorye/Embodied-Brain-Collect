@@ -43,12 +43,20 @@ def test_full_headless_run(tmp_path, monkeypatch):
     # 隔离的 configs 目录:stim.yaml 指向实际端口 + 压缩参数(sync_test 段)
     monkeypatch.setenv("EMBODIED_BRAIN_COLLECT_CONFIGS", str(tmp_path))
     (tmp_path / "stim.yaml").write_text(
+        # 必需键齐全:stim 参数唯一来源是 stim.yaml,缺键启动即报
         "udp_host: '127.0.0.1'\n"
         f"udp_port: {actual_port}\n"
         "serial: false\n"
+        "baud: 115200\n"
+        "hold_s: 0.02\n"
+        "display: 0\n"
         "sync_test:\n"
         "  fullscreen: false\n"
+        "  width: 64\n"
+        "  height: 48\n"
+        "  font_size: 24\n"
         "  imag_s: 0.6\n"
+        "  read_s: 0.2\n"
         "  cycle_s: 0.4\n"
         "  cycles: 2\n",
         encoding="utf-8")

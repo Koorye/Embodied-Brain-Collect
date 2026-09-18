@@ -2,6 +2,25 @@
 
 ## 1.3.0 — 2026-09-17
 
+### recorder 工厂下沉到 recorders 包,砍掉 28 个 get 样板(session/recorder_presets)
+
+* 新增 `recorders/factory.py`:`REGISTRY`(kind → 子模块/Recorder 类/
+  Config 类,24 个 kind)+ 通用 `build(kind, params, session_dir,
+  duration)` —— **Config dataclass 的字段默认值就是默认配置**,yaml 写了
+  的键覆盖、没写的走 dataclass 默认,不再需要每模态一个 `get_*` 函数把
+  默认值抄一遍再透传。条目按需 import:neon/openvr/manus/pycbsdk 等 SDK
+  只在对应 kind 被构造时才加载,没装 SDK 不影响其他模态。
+* 这同时修掉一个**双层默认 bug**:旧 `get_intan_eeg` 会显式传
+  `digital_map=None`,把 dataclass 的 `default_factory`(猴台架映射)吃
+  掉 —— presets 路径下该默认从不生效。通用构建后 yaml 不写该键即走
+  dataclass 默认;dict→tuple 归一化(ego topics)下沉到对应 Config 的
+  `__post_init__`。
+* `session/recorder_presets.py` 整个删除,编排逻辑(单槽位构建
+  `build_recorder`、`get_production_recorders`、dummy 捆绑
+  `get_dummy_recorders`)并入 `recorders/factory.py` —— device 层自带
+  工厂,session 层不再留一份;launcher/run_session/preflight 只改 import
+  路径,函数名与签名不变;`check_emg` 改走 factory。
+
 ### 数据集元数据:collect_info.jsonl 成为唯一边车,info.json 不再附加字段(pack_daily)
 
 * info.json 保持 mf_lerobot 写下的 LeRobot 标准字段(fps/特征表)——
@@ -52,6 +71,104 @@
   不含 combo 段仍被排除);`scene_config`/`scene_layout` 在精确名缺失时
   回退 `*_config.yaml`/`*_placements.csv`。台账键 = 实际文件名,不受影响。
 
+### 简化总检:配置为唯一来源,砍掉全部静默回退
+
+* **stim 参数唯一来源化**:base_stim/paradigm1/rgb/sync_test 的 argparse
+  默认值不再存代码字面量(`_required` 从 stim.yaml 取,缺键启动即报缺
+  哪个;只有语义默认留在代码:fast=1.0 不压缩、fullscreen 默认开)——
+  代码与 yaml 双份默认早已漂移过(instr_s 代码 10s/yaml 5s),并当场
+  抓到 rgb 段缺 font_size 的真实配置缺口。`parallelbox` 默认空串:serial
+  开着没配口由 MarkerSender 拒绝(原来默认 "COM14" 会去开不存在的口);
+  MarkerSender 自身的 port 默认 COM14 一并删除。
+* **marker 码表补全必需项**:`hand_cue_base` 不再有 0xC0 内置默认,
+  markers.yaml 必须显式给(数值或 null),与"码表无内置默认"策略一致。
+* **QC 无窗口直接收场**:`find_run_window` 找不到 RUN_START/RUN_END 时
+  qc_session 记 ERROR 后**立即返回,不再按全部数据跑各流检查** —— 全
+  量结果只会误导(看着合格,实际不可对齐);print_report 的"会话起点"
+  等回退分支随之删除。
+* **pack 与 QC 同门槛**:非 `--full` 打包遇到无窗口会话直接跳过并说明
+  (原来静默回退相机区间,产出看似正常实则不可对齐的数据);`--full`
+  是显式全量模式,保持相机区间。
+* **防御性 try 清理**:launcher run_qc / run_session html 开关 /
+  environment.show 读 stim.yaml 的 FileNotFoundError→静默默认全部删除
+  (configs 随仓库分发,缺文件即报);check_emg 槽位配置整体透传
+  factory,不再手抄 port/baud(921600 字面量删除)。
+
+### meta.status 三档合成:QC 优先于交互按键(run_session)
+
+* 结局标记从"按键决定 success/failed"改为综合判定:**QC 有 ERROR →
+  `error`(无论 n/r/q);QC 无错且按 r → `failed`;QC 无错且按 n/q →
+  `success**。仅 `success` 记图纸台账(QC 有错按 n 保留数据也不再占图纸)。
+  打包的 collect_info.jsonl 逐 episode 携带该状态,下游可按
+  success/failed/error 分流。
+
+### RUN_START/RUN_END 成为硬性 QC 门槛(marker checker)
+
+* 一条数据的 marker.npz 必须含完整的 RUN_START→RUN_END 对,否则 QC 直接
+  判 ERROR —— 不再是"按全部数据范围检查"的 WARN 回退(那种数据对 EEG
+  对齐/打包裁剪都无从谈起,静默降级只会把问题推到打包端)。四种缺情形
+  各有明确报错:未记录任何标记 / 缺 RUN_START / 缺 RUN_END / RUN_END 早于
+  RUN_START(窗口无效);会话级 RunWindow finding 同步 WARN→ERROR。配合
+  台账门控,这样的数据按 n/q 保留也不会把图纸记入台账。
+
+### dummy 模式强制关闭 stim 串口(run_session/launcher)
+
+* `--dummy` 是无硬件试跑,但 stim.yaml 的 `serial: true` 会让 stim 一启动
+  就去打开 ParallelBox 串口 —— 机器上没有该设备时直接
+  SerialException 崩掉,整条 marker 链(连 UDP 通路)全挂。现在 dummy
+  模式给 stim 强制加 `--no-serial` 并打印提示:marker 走 UDP 通路
+  (dummy 的 marker 槽位本来就是真实 UDP listener,marker 事件照样进
+  数据),需要验证真实 TTL 时跑正式采集或手动运行 stim。launcher 独立
+  CLI 的 `--dummy --with-stim` 路径同样处理。
+
+### 展示屏幕可配置,图纸展示改用 pygame(environment + base_stim)
+
+* `configs/stim.yaml` 公共段新增三个键:`display`(stim 程序启动屏幕,
+  0=主屏)、`drawing_display`(图纸展示屏幕,缺省同 `display`)、
+  `drawing_fullscreen`(图纸是否全屏,默认 true,false=窗口化方便主屏
+  同时操作)。stim 侧有 `--display` CLI 覆盖;索引越界(配置的屏幕不
+  存在)打印告警并回退主屏。
+* 图纸展示从 matplotlib 改为 **pygame**(Environment.show 重写):消除
+  多屏定位的后端难题(两套窗口体系统一用 SDL 的 display 参数),采集
+  路径不再依赖 matplotlib。交互契约原样保留:n+Enter 确认开始、其他
+  按键无效并提示、Esc/关窗=取消;图纸按比例缩放居中,标题/提示用中
+  文字体渲染。
+
+### 台账门控与最大采集量(run_session)
+
+* **图纸台账只在 QC 无 ERROR 且按 n/q 时记录**:原来只要按 n/q 就记
+  台账,QC 有 ERROR 的数据也会把图纸占掉。现在 QC 有 ERROR 时按 n/q
+  仍保留数据(meta 标 success),但图纸**不记台账** —— 之后会重新抽到
+  重采;提示语与 QC 判定行都会明示这一后果(输入提示同样带警告)。
+  `--skip-qc` 时无 QC 信息,视为无 ERROR(操作员自行选择不检查)。
+* **session.yaml 新增 `max_runs`(默认 50)**:设置了该值时,图纸/任务
+  队列只取前 N 条,次数到即停;0 或不设 = 不限。CLI `--max-runs` 可覆盖
+  (优先级 yaml < CLI),启动横幅打印本次计划条数。
+
+### 新增 rgb 色块刺激(stim/rgb_cue)
+
+* 纯颜色三阶段流程,**无任何文字提示**:黑底 + 5/4/3/2/1 倒数=等待期
+  (每秒一跳,``wait_s`` 秒,数完自动切换)→ 蓝色=想象期(空格切换)→
+  绿色=操作期(空格结束)。颜色 `#RRGGBB` 可配(stim.yaml `rgb:` 段,默认纯 RGB
+  原色),阶段顺序与 marker 语法与 paradigm1 一致:RUN_START →
+  INSTR_ON/OFF(红)→ IMG_START/END(蓝)→ EXEC_START/END(绿)→
+  RUN_END;Esc 中止也补全阶段码与 RUN_END。已注册 stim 工厂
+  (`--stim rgb`),无需 task-id,图纸/任务两种模式都可用;headless
+  对拍验证发码序列逐值正确。
+
+### marker 码表配置化,取消 P1 边界码(stim/eeg)
+
+* 新增 `configs/markers.yaml`:全部具名码(RUN_START/RUN_END/FIX_ON/…,
+  必须齐全)与手势码段基址 `hand_cue_base` 可按台架改。代码只认键名,
+  数值导入时读取一次并强校验 —— 文件缺失/缺 codes 段/缺码名/未知键名/
+  越界/码值重复,导入立即失败并给可操作报错,绝不带病发码(重复码会让
+  EEG 按码配对失效);**没有内置默认表**,码表唯一来源是该文件。
+* **取消 P1_RUN_START/P1_RUN_END**:simple_stim 与 paradigm1 统一发
+  RUN_START/RUN_END。两线 TTL 接法的台架(码会掉位碰撞)直接在
+  markers.yaml 把边界对设成单比特码(如 run_start: 16 / run_end: 32),
+  intan 的 digital_map 默认映射目标也自动跟随码表当前值,代码层不再有
+  第二套边界码。
+
 ### 新增 scripts/check_emg.py — EMG 左右手对应检查
 
 * 实时显示左右两条 EMG 臂环(recorders.yaml 的 emg_left/emg_right 槽位,
@@ -76,8 +193,10 @@
   连接错误。
 * **digital_map 默认启用猴台架接线映射**:`IntanEegRecorderConfig.
   digital_map` 默认 `{"0x4000": 16, "0x2000": 32}`(实测接线 box
-  bit4→DIN14、bit5→DIN13),simple/paradigm1 的 16/32 边界码经查表还原
-  后才能进 EEG 对齐拟合;接线改动在 recorders.yaml 覆盖。dataclass 字段
+  bit4→DIN14、bit5→DIN13)映射到 markers.yaml 码表的边界对当前值
+  (两线接法请在 markers.yaml 把 run_start/run_end 设为单比特码
+  16/32),查表还原后才能进 EEG 对齐拟合;接线改动在 recorders.yaml
+  覆盖。dataclass 字段
   经 `field(default_factory=…)` 给默认(dict 实例直接作默认值会在
   import 时抛 ValueError)。
 
@@ -114,8 +233,8 @@
   与 ``--parallelbox`` 注释同步。多台放大器各自对齐时每台接一台
   ParallelBox 即可。
 * **simple_stim 注册进 stim 工厂**:最小刺激流程(任务名 → 空格开跑 →
-  空格结束 → 退出,只发 P1_RUN_START(16)/P1_RUN_END(32) 一对边界码,
-  Esc 中止也补 END 保住码对)。``marker_codes`` 补 P1 边界码(并入
+  空格结束 → 退出,只发一对 RUN_START/RUN_END 边界码,数值随
+  markers.yaml 码表,Esc 中止也补 END 保住码对)。``marker_codes`` 补 P1 边界码(并入
   NAMED 反查表);``build_stim_cmd`` 对 simple 传 ``--task-id``
   (无 ``--once``,本来就是单次流程);stim.yaml 增 ``simple`` 参数段,
   session.yaml 的 stim 键注释同步。仅任务列表模式可用(需要 task-id)。

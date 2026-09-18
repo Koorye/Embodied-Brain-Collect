@@ -1,0 +1,38 @@
+# marker 码表 —— 代码只认键名(RUN_START/RUN_END/...),数值可按台架改。
+# 改动影响:stim 发码、EEG 对齐配对(checker 按 RUN_START/RUN_END 找窗口)、
+# marker 校验与 QC 页面的码名显示。
+# 注意:本文件在进程启动时读取一次,改完要重启采集/stim 进程。
+
+codes:
+  RUN_START: 241        # run 边界对:EEG 对齐至少要一对唯一码
+  RUN_END: 242
+  BLOCK_START: 225      # 0xE1
+  BLOCK_END: 226        # 0xE2
+  FIX_ON: 17            # 0x11
+  FIX_OFF: 18           # 0x12
+  CUE_AUDIO: 33         # 0x21
+  INSTR_ON: 49          # 0x31
+  INSTR_OFF: 50         # 0x32
+  GO_AUDIO: 65          # 0x41
+  EXEC_START: 81        # 0x51
+  EXEC_END: 82          # 0x52
+  IMG_START: 97         # 0x61
+  IMG_END: 98           # 0x62
+  VIDEO_START: 113      # 0x71
+  VIDEO_END: 114        # 0x72
+  ERROR: 254            # 0xFE
+  PANIC: 255            # 0xFF
+  IDLE: 0               # 0x00 串口空闲电平,永不作为事件发送
+
+# 同步测试手势码段基址:0xC0-0xDF(cycle*4+action,8 轮 x 4 动作)。
+# null = 禁用手势码段。
+hand_cue_base: 192
+
+# ---- 台架改表示例 -------------------------------------------------------
+# TTL 线只接了部分数据位时(如两线:box bit4→放大器 DIN14、bit5→DIN13),
+# 多位的码会互相碰撞 —— 把边界对改成单比特码,并让 intan 的 digital_map
+# 把字型映射回这里的值:
+#   codes:
+#     RUN_START: 16      # 0x10 = bit4
+#     RUN_END: 32        # 0x20 = bit5
+#   (recorders.yaml 的 eeg_intan: digital_map: {"0x4000": 16, "0x2000": 32})

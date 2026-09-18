@@ -28,13 +28,6 @@ from .config import configs_dir
 
 LEDGER_NAME = "used.yaml"
 
-# 常见中文字体(按优先级);matplotlib 默认的 DejaVu 没有汉字字形
-_CJK_FONTS = (
-    "Microsoft YaHei", "SimHei", "PingFang SC", "Hiragino Sans GB",
-    "Noto Sans CJK SC", "Noto Sans CJK JP", "Source Han Sans SC",
-    "Source Han Sans CN", "WenQuanYi Micro Hei", "WenQuanYi Zen Hei",
-    "HYZhongYuanB5", "Arial Unicode MS",
-)
 
 
 class Environment:
@@ -235,84 +228,94 @@ class Environment:
 
     # ---- 摆放显示 ------------------------------------------------------------
 
-    def show(self, rel: str, *, fullscreen: bool = True) -> str:
-        """全屏显示一张图纸,按 ``n + Enter`` 确认后关闭。
+    def show(self, rel: str, *, fullscreen: bool | None = None,
+             display: int | None = None) -> str:
+        """展示一张图纸,按 ``n + Enter`` 确认后关闭(pygame 实现)。
 
-        只有先按 ``n`` 再按 ``Enter`` 才算确认(返回 "done");其他按键一律
-        无效(提示后原地等待),未确认就关闭窗口视为取消(返回 "abort")。
-        matplotlib 在函数内导入,用默认交互后端。
+        只有先按 ``n`` 再按 ``Enter`` 才算确认(返回 "done");其他按键
+        一律无效(提示后原地等待),Esc/关窗未经确认视为取消(返回
+        "abort")。屏幕与窗口取值优先级:参数 > stim.yaml 的
+        ``drawing_display``(缺省回退 ``display``)/ ``drawing_fullscreen``
+        (缺省全屏)/ ``drawing_width``+``drawing_height``(仅窗口化时
+        生效,0 = 跟随屏幕;全屏模式始终跟随该屏分辨率)。
         """
-        import matplotlib
-        import matplotlib.pyplot as plt
+        import pygame
+        from ..stim.base_stim import _FONT_CANDIDATES, _find_font
 
-        verdict = {"value": "abort"}          # 只有 n+Enter 确认才改成 done
-        img = plt.imread(str(self.path(rel)))
-        ow, oh = img.shape[1], img.shape[0]
+        if display is None or fullscreen is None:
+            from .config import load_stim
+            stim_cfg = load_stim() or {}
+            if display is None:
+                display = int(stim_cfg.get(
+                    "drawing_display", stim_cfg.get("display", 0)) or 0)
+            if fullscreen is None:
+                fullscreen = bool(stim_cfg.get("drawing_fullscreen", True))
 
-        prop = self._cjk_font_prop()
-        title_kw = {"fontproperties": prop} if prop is not None else {}
-        caption = (f"环境图纸 {rel} — 照图摆放,按 n + Enter 开始采集"
-                   if prop is not None else
-                   f"Environment {rel} — arrange objects, then press n + Enter")
+        win_w = int(stim_cfg.get("drawing_width") or 0)
+        win_h = int(stim_cfg.get("drawing_height") or 0)
 
-        fig = plt.figure(figsize=(16, 9), facecolor="#181818")
-        ax = fig.add_axes([0, 0, 1, 1])          # 坐标区铺满窗口,imshow 保比例
-        ax.imshow(img)
-        ax.set_axis_off()
-        box = dict(boxstyle="round", fc="#181818", ec="none", alpha=0.85)
-        fig.text(0.5, 0.985, caption, ha="center", va="top",
-                 color="white", fontsize=14, bbox=box, **title_kw)
-        status = fig.text(0.5, 0.015, "", ha="center", va="bottom",
-                          color="white", fontsize=13, bbox=box, **title_kw)
-        try:
-            mng = plt.get_current_fig_manager()
-            if fullscreen:
-                mng.full_screen_toggle()
-        except Exception:
-            pass  # 后端不支持全屏就按窗口大小显示
+        pygame.init()
+        n_displays = pygame.display.get_num_displays()
+        if display >= n_displays:
+            print(f"[env] 配置的屏幕 {display} 不存在(共 {n_displays} 块)"
+                  "— 用主屏")
+            display = 0
+        flags = pygame.FULLSCREEN if fullscreen else 0
+        size = (win_w, win_h) if (not fullscreen and win_w > 0 and win_h > 0) \
+            else (0, 0)
+        screen = pygame.display.set_mode(size, flags, display=display)
+        sw, sh = screen.get_size()
+        pygame.display.set_caption(f"环境图纸 {rel}")
 
-        state = {"n": False, "confirmed": False}
+        img = pygame.image.load(str(self.path(rel)))
+        iw, ih = img.get_size()
+        scale = min(sw / iw, sh / ih)
+        if scale < 1.0:                       # 只缩小不放大,保清晰
+            img = pygame.transform.smoothscale(
+                img, (max(1, int(iw * scale)), max(1, int(ih * scale))))
+        img_rect = img.get_rect(center=(sw // 2, sh // 2))
 
-        def hint(msg: str) -> None:
-            status.set_text(msg)
-            fig.canvas.draw_idle()
+        font = pygame.font.Font(
+            _find_font(_FONT_CANDIDATES) or pygame.font.get_default_font(),
+            max(20, sh // 50))
+        caption = f"环境图纸 {rel} — 照图摆放,按 n + Enter 开始采集(Esc 取消)"
 
-        def on_key(event):
-            if state["confirmed"]:
-                return
-            key = event.key or ""
-            if key == "n":
-                state["n"] = True
-                hint("已按 n — 按 Enter 确认开始采集")
-            elif key == "enter" and state["n"]:
-                state["confirmed"] = True
-                verdict["value"] = "done"
-                plt.close(fig)
-            else:
-                state["n"] = False
-                hint("输入无效 — 请按 n + Enter 开始采集")
+        pressed_n = False
+        hint = ""
+        verdict = "abort"
+        clock = pygame.time.Clock()
+        running = True
+        print(f"[env] 图纸 {rel} ({iw}x{ih}) 显示于屏幕 {display} "
+              f"({sw}x{sh}),摆放完成后按 n + Enter 开始采集")
+        while running:
+            for ev in pygame.event.get():
+                if ev.type == pygame.QUIT:
+                    running = False           # 未经确认关窗 = 取消本次
+                elif ev.type == pygame.KEYDOWN:
+                    if ev.key == pygame.K_ESCAPE:
+                        running = False
+                    elif ev.key == pygame.K_n:
+                        pressed_n = True
+                        hint = "已按 n — 按 Enter 确认开始采集"
+                    elif (ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER)
+                          and pressed_n):
+                        verdict = "done"
+                        running = False
+                    else:
+                        pressed_n = False
+                        hint = "输入无效 — 请按 n + Enter 开始采集"
 
-        def on_close(event):
-            if not state["confirmed"]:
-                verdict["value"] = "abort"   # 未经确认关窗 = 取消本次
+            screen.fill((24, 24, 24))
+            screen.blit(img, img_rect)
+            screen.blit(font.render(caption, True, (255, 255, 255)), (24, 12))
+            if hint:
+                screen.blit(font.render(hint, True, (255, 210, 80)),
+                            (24, sh - 44))
+            pygame.display.flip()
+            clock.tick(30)
 
-        fig.canvas.mpl_connect("key_press_event", on_key)
-        fig.canvas.mpl_connect("close_event", on_close)
-        print(f"[env] 图纸 {rel} ({ow}x{oh}) 以 matplotlib 显示"
-              f"(后端 {matplotlib.get_backend()}),摆放完成后按 n + Enter 开始采集")
-        plt.show()                               # 阻塞到窗口被关闭
-        return verdict["value"]
-
-    @staticmethod
-    def _cjk_font_prop():
-        """本机已装的中文字体 FontProperties;一个都没有则 None。"""
-        import matplotlib.font_manager as fm
-        installed = {f.name for f in fm.fontManager.ttflist}
-        for name in _CJK_FONTS:
-            if name in installed:
-                return fm.FontProperties(family=name)
-        return None
-
+        pygame.display.quit()
+        return verdict
 
 # 默认实例 + 便捷函数:老调用写法(env.scene_task(rel) 等)保持不变
 _environment = Environment()
@@ -358,5 +361,6 @@ def scene_task(rel: str) -> str:
     return _environment.scene_task(rel)
 
 
-def show(rel: str, *, fullscreen: bool = True) -> str:
-    return _environment.show(rel, fullscreen=fullscreen)
+def show(rel: str, *, fullscreen: bool | None = None,
+         display: int | None = None) -> str:
+    return _environment.show(rel, fullscreen=fullscreen, display=display)

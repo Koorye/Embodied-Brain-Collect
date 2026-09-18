@@ -54,7 +54,7 @@ from embodied_brain_collect.session.config import (  # noqa: E402
 from embodied_brain_collect.session import environment as env  # noqa: E402
 from embodied_brain_collect.session.launcher import (  # noqa: E402
     _recorder_names, _write_session_meta, launch, run_qc)
-from embodied_brain_collect.session.recorder_presets import (  # noqa: E402
+from embodied_brain_collect.recorders.factory import (  # noqa: E402
     get_dummy_recorders, get_production_recorders)
 from embodied_brain_collect.session.troubleshooting import (  # noqa: E402
     format_failure_help)
@@ -222,7 +222,8 @@ def _session_span(qc: dict) -> float:
     return float(t1 - t0) if t0 is not None and t1 is not None else 0.0
 
 
-_STATUS_LABELS = {"kept": "保留", "rerun": "重跑", "quit": "退出"}
+_STATUS_LABELS = {"kept": "保留", "rerun": "重跑", "quit": "退出",
+                  "success": "成功", "failed": "失败", "error": "QC错误"}
 
 
 def _print_check_counts(title: str, by_check: dict[str, dict[str, int]],
@@ -327,8 +328,10 @@ def _save_summary(summary: dict, session_root: Path) -> Path:
 def _mark_meta(run_dir: Path, status: str) -> None:
     """把本次采集的结局写进该 session 的 meta.yaml(status 字段)。
 
-    r(重采)→ failed;n/q → success。标记随数据目录走 —— 打包、汇总
-    不依赖班次根的 run_summary.json 也能识别单条数据的有效性。
+    三档合成:QC 有 ERROR → error(无论 n/r/q);QC 无错且 r → failed
+    (操作员判失败重采);QC 无错且 n/q → success。仅 success 记图纸台账。
+    标记随数据目录走 —— 打包、汇总不依赖班次根的 run_summary.json
+    也能识别单条数据的有效性。
     """
     import yaml
     p = run_dir / "meta.yaml"
@@ -343,12 +346,15 @@ def _mark_meta(run_dir: Path, status: str) -> None:
                  encoding="utf-8")
 
 
-def _ask_next() -> str:
+def _ask_next(qc_error: bool = False) -> str:
     """录制结束后的确认输入,防误触:必须输入 n/r/q 之一再回车。
 
     只回车、输错字母都会要求重输 —— 录制现场经常双手忙着摘设备,
     误触一下 Enter 不能直接吞掉一条录制。
     """
+    if qc_error:
+        print("  ⚠ QC 有 ERROR — 此时按 n/q 仍保留数据,但图纸不记台账,"
+              "之后会重新抽到重采")
     while True:
         ans = input("  输入 n(当前采集成功,下一条) / "
                     "r(当前采集失败,重跑) / q(成功并退出),"
@@ -446,6 +452,13 @@ def record_one(session_root: Path, job: dict, stim: str,
                             collect_info=collect)
         stim_cmd = build_stim_cmd(stim, task_id=job["task_id"])
 
+    if args.dummy and stim_cmd:
+        # dummy = 无硬件试跑:串口强制关闭 —— 机器上没有 ParallelBox 时
+        # stim 会在打开串口时直接崩掉(serial: true 也一样)
+        stim_cmd = stim_cmd + ["--no-serial"]
+        print("[run_session] dummy 模式 — stim 串口已强制关闭(--no-serial),"
+              "marker 走 UDP 通路")
+
     rc = 1
     try:
         rc = launch(recs, stim_cmd=stim_cmd, duration=args.duration)
@@ -485,6 +498,9 @@ def main(argv: list[str] | None = None) -> int:
                          "再缺省 paradigm1);参数见 configs/stim.yaml")
     ap.add_argument("--collector-id", default=None,
                     help="采集编号(覆盖 configs/session.yaml 的 collector_id)")
+    ap.add_argument("--max-runs", type=int, default=None, dest="max_runs",
+                    help="单次会话最大采集条数(覆盖 configs/session.yaml "
+                         "的 max_runs;0 = 不限)")
     ap.add_argument("--set", action="append", default=[],
                     metavar="KEY=VALUE",
                     help="覆盖/追加任意采集信息键,可多次(如 --set subject=XX);"
@@ -506,6 +522,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"未知 stim: {stim!r} (可用: {sorted(STIM_KINDS)})",
               file=sys.stderr)
         return 2
+
+    max_runs = (args.max_runs if args.max_runs is not None
+                else int(run_cfg.get("max_runs") or 0))
 
     # ---- 0b. 采集信息:session.yaml 顶层除运行期开关/框架保留键外都是;
     # CLI 逐键覆盖,优先级 yaml < --collector-id < --set(最后写 wins)。
@@ -559,8 +578,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'─' * 68}\n执行顺序:")
         for i, job in enumerate(queue, 1):
             print(f"  {i:>3}. #{job['task_id']:<3} {job['task_name']}")
+    if max_runs > 0 and len(queue) > max_runs:
+        queue = queue[:max_runs]
+        print(f"最大采集量 max_runs={max_runs} — 队列只取前 {max_runs} 条")
     print(f"{'─' * 68}")
-    print(f"[run_session] 模式={mode}  stim={stim}"
+    print(f"[run_session] 模式={mode}  stim={stim}  计划={len(queue)} 条"
           + (f"  采集信息: {collect}" if collect else ""))
     try:
         input("按 Enter 开始采集(Ctrl+C 取消) ...")
@@ -606,6 +628,7 @@ def main(argv: list[str] | None = None) -> int:
                     runtime_errors, phase="data",
                     fail_counts=slot_fail, log_root=str(run_dir)))
 
+            qc_error = False
             qc = _load_qc(run_dir)
             if qc:
                 findings = [f for st in qc.get("streams", {}).values()
@@ -615,13 +638,14 @@ def main(argv: list[str] | None = None) -> int:
                 verdict = "无 ERROR" if n_err == 0 else f"{n_err} 条 ERROR"
                 # qc.html 是 checker.yaml 的可选项(html:,默认开);关掉时
                 # 细节只在 qc_report.json 里
-                try:
-                    from embodied_brain_collect.session.config import load_checker
-                    html_on = (load_checker() or {}).get("html", True)
-                except FileNotFoundError:
-                    html_on = True
+                from embodied_brain_collect.session.config import load_checker
+                html_on = (load_checker() or {}).get("html", True)
                 detail = run_dir / ("qc.html" if html_on else "qc_report.json")
                 print(f"  QC 判定: {qc.get('level')} ({verdict}) — 细节见 {detail}")
+                if n_err:
+                    qc_error = True
+                    print("  ⚠ 图纸不记入台账 — 之后会重新抽到重采;"
+                          "确认无碍可按 n 保留数据")
                 if n_err and not open_failures:
                     # 启动都没成功时 QC 缺流是必然,不再重复提示
                     qc_errs = _qc_slot_errors(qc)
@@ -636,32 +660,46 @@ def main(argv: list[str] | None = None) -> int:
             if args.auto_keep:
                 choice = "next"
             else:
-                choice = _ask_next()
+                choice = _ask_next(qc_error=qc_error)
             if choice == "rerun":
                 outcomes[run_dir.name] = "rerun"
-                _mark_meta(run_dir, "failed")
-                print(f"  当前采集失败(meta 标记 failed)— {run_dir.name} "
+                # 状态合成:QC 有 ERROR 一律 error;否则操作员判失败 = failed
+                status = "error" if qc_error else "failed"
+                _mark_meta(run_dir, status)
+                print(f"  当前采集失败(meta 标记 {status})— {run_dir.name} "
                       "留档不删除,马上重新录制 ...")
                 continue
             if choice == "quit":
                 outcomes[run_dir.name] = "quit"
-                _mark_meta(run_dir, "success")
+                # 状态合成:QC ERROR → error;退出前无错按 q = 成功保留
+                status = "error" if qc_error else "success"
+                _mark_meta(run_dir, status)
                 interrupted = True
                 if job["mode"] == "env":
-                    env.mark_used(job["rel"], session=str(run_dir))
-                    print(f"  退出本次会话 — {run_dir.name} 已标记成功,"
-                          f"图纸 {job['rel']} 已记入台账")
+                    if status == "success":
+                        env.mark_used(job["rel"], session=str(run_dir))
+                        print(f"  退出本次会话 — {run_dir.name} 标记 {status},"
+                              f"图纸 {job['rel']} 已记入台账")
+                    else:
+                        print(f"  退出本次会话 — {run_dir.name} 标记 {status};"
+                              "QC 有 ERROR,图纸不记台账(会重新抽到重采)")
                 else:
-                    print(f"  退出本次会话 — {run_dir.name} 已标记成功并留档")
+                    print(f"  退出本次会话 — {run_dir.name} 标记 {status}并留档")
                 break
 
+            # 状态合成:QC ERROR → error;n/q 保留且无错 = success
+            status = "error" if qc_error else "success"
             outcomes[run_dir.name] = "kept"
-            _mark_meta(run_dir, "success")
+            _mark_meta(run_dir, status)
             kept_jobs.append(job)
             if job["mode"] == "env":
-                env.mark_used(job["rel"], session=str(run_dir))
-                print(f"  已保留 {run_dir.name} — 图纸 {job['rel']} 已记入"
-                      "台账,进入下一张")
+                if status == "success":
+                    env.mark_used(job["rel"], session=str(run_dir))
+                    print(f"  已保留 {run_dir.name}(标记 {status})— 图纸"
+                          f" {job['rel']} 已记入台账,进入下一张")
+                else:
+                    print(f"  已保留 {run_dir.name}(标记 {status})— QC 有"
+                          " ERROR,图纸不记台账(会重新抽到重采),进入下一张")
             else:
                 print(f"  已保留 {run_dir.name} — 任务 #{job['task_id']} 完成,"
                       "进入下一个")

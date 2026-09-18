@@ -23,7 +23,7 @@ Usage::
 
     # Code: custom setup
     from embodied_brain_collect.session.launcher import launch
-    from embodied_brain_collect.session.recorder_presets import get_production_recorders
+    from embodied_brain_collect.recorders.factory import get_production_recorders
 
     recs = get_production_recorders(session_dir="./sessions/run1")
     launch(recs, stim_cmd=["python", "-m", "embodied_brain_collect.stim.paradigm1_pickplace",
@@ -483,13 +483,9 @@ def run_qc(session_dir: Path) -> int:
     from embodied_brain_collect.visualizers.qc_page import Options, build_page
 
     print(f"\n[launcher] running QC on {session_dir} ...")
+    from embodied_brain_collect.session.config import load_checker
     try:
-        from embodied_brain_collect.session.config import load_checker
-        try:
-            checker_cfg = load_checker()
-        except FileNotFoundError:
-            checker_cfg = {}
-        report = qc_session(session_dir, checker_cfg=checker_cfg)
+        report = qc_session(session_dir, checker_cfg=load_checker())
     except Exception as exc:      # noqa: BLE001
         print(f"[launcher] QC failed: {type(exc).__name__}: {exc}")
         return 1
@@ -522,7 +518,7 @@ def run_qc(session_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from embodied_brain_collect.session.recorder_presets import get_dummy_recorders, get_production_recorders
+    from embodied_brain_collect.recorders.factory import get_dummy_recorders, get_production_recorders
 
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -614,6 +610,11 @@ def main(argv: list[str] | None = None) -> int:
     # ---- stim command ----
     stim_cmd = (build_stim_cmd(kind, task_id=task_id, environment=env_rel)
                 if kind else None)
+    if args.dummy and stim_cmd:
+        # dummy = 无硬件试跑:串口强制关闭(机器上没有 ParallelBox 时 stim
+        # 会在打开串口时直接崩掉)
+        stim_cmd = stim_cmd + ["--no-serial"]
+        print("[launcher] dummy 模式 — stim 串口已强制关闭(--no-serial)")
 
     rc = launch(recs, stim_cmd=stim_cmd, duration=args.duration)
     if env_rel is not None:

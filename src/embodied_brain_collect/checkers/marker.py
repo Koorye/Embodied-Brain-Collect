@@ -27,7 +27,7 @@ def find_run_window(root: Path) -> dict | None:
     """Locate the RUN_START -> RUN_END pair that bounds the analysis window.
 
     Returns ``{"t0", "t1", "n_markers", "file"}``, or None when the pair is
-    missing — callers then fall back to the full data range.
+    missing — callers treat that as fatal (the session is unalignable).
     """
     for d in sorted(p for p in Path(root).iterdir() if p.is_dir()):
         if not d.name.startswith("marker"):
@@ -59,8 +59,9 @@ def find_run_window(root: Path) -> dict | None:
 
 @dataclass(frozen=True)
 class MarkerPresence(BaseCheck):
-    """A run with no markers cannot be aligned to anything else — an error,
-    not a warning: without RUN_START/RUN_END no stream is alignable."""
+    """一条数据必须能对齐:marker.npz 缺失、空、或没有完整的
+    RUN_START→RUN_END 对都是 ERROR(不是"按全部数据检查"的回退)——
+    没有这对码,任何流都无法与 EEG/事件对齐,数据不可用。"""
 
     def run(self, ctx: CheckContext) -> CheckOutput:
         code = ctx.arr("marker_code")
@@ -69,6 +70,26 @@ class MarkerPresence(BaseCheck):
         out.stats["n_markers"] = n
         if n == 0:
             out.findings.append(self.finding("ERROR", "未记录任何标记"))
+            return out
+        arr = np.asarray(code).ravel()
+        starts = np.flatnonzero(arr == RUN_START)
+        ends = np.flatnonzero(arr == RUN_END)
+        if starts.size == 0 and ends.size == 0:
+            out.findings.append(self.finding(
+                "ERROR", f"无 RUN_START({RUN_START})/RUN_END({RUN_END})"
+                " 标记 — 无法对齐,数据不可用"))
+        elif starts.size == 0:
+            out.findings.append(self.finding(
+                "ERROR", f"缺 RUN_START({RUN_START})标记 — 无法对齐,"
+                "数据不可用"))
+        elif ends.size == 0:
+            out.findings.append(self.finding(
+                "ERROR", f"缺 RUN_END({RUN_END})标记 — 无法对齐,"
+                "数据不可用"))
+        elif int(ends[ends >= starts[0]].size) == 0:
+            out.findings.append(self.finding(
+                "ERROR", f"RUN_END({RUN_END})出现在 RUN_START 之前 —"
+                "窗口无效,数据不可用"))
         return out
 
 
@@ -114,15 +135,15 @@ class MarkerChecker(BaseChecker):
         t = ctx.arr("marker_t_sent_pc")
         if t is None:
             t = ctx.arr("marker_t_local_recv")
-        if code is None or t is None:
+        if code is None or t is None or t.size == 0:
             return
         code = np.asarray(code).ravel()
         t = np.asarray(t, dtype=np.float64).ravel()
         tag = ctx.arr("marker_tag")
 
-        mask = ctx.mask(t)
-        keep = np.flatnonzero(mask) if mask is not None else np.arange(t.size)
-        base = ctx.window["t0"] if ctx.window else (float(t[0]) if t.size else 0.0)
+        # qc_session 找不到窗口时根本不会跑到任何检查,这里窗口恒在
+        keep = np.flatnonzero(ctx.mask(t))
+        base = ctx.window["t0"]
 
         report.stats["markers"] = {
             "n_total": int(code.size),

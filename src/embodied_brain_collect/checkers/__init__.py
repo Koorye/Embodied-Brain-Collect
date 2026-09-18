@@ -89,9 +89,13 @@ def qc_session(session_dir: Path | str,
     report = SessionReport(session_dir=str(root), window=window)
 
     if window is None:
+        # 边界对是数据的硬前提:缺它直接 ERROR 收场,**不回退到按全部
+        # 数据检查** —— 没有窗口,一切流检查的裁剪/对齐都无从谈起,
+        # 跑出来的"全量 QC 结果"只会误导(看起来合格,实际不可用)。
         report.findings.append(Finding(
-            "WARN", "未找到 RUN_START/RUN_END 标记对 — 按全部数据范围检查",
-            check="RunWindow"))
+            "ERROR", "未找到 RUN_START/RUN_END 标记对 — 无法对齐,"
+            "数据不可用", check="RunWindow"))
+        return report
 
     for d in sorted(x for x in root.iterdir() if x.is_dir()):
         if not _has_data(d):
@@ -219,10 +223,8 @@ def print_report(report: SessionReport) -> None:
         t1s = [s["t1"] for s in r.series.values() if s.get("t1") is not None]
         if t0s:
             rows.append((name, min(t0s), max(t1s)))
-    if rows:
-        base = w["t0"] if w else min(t0 for _, t0, _ in rows)
-        end = w["t1"] if w else max(t1 for _, _, t1 in rows)
-        ref = "RUN_START" if w else "会话起点"
+    if rows:                                   # 有流 ⇒ 报告带窗口生成
+        base, end, ref = w["t0"], w["t1"], "RUN_START"
         print(f"\n时间线(相对{ref})")
         for name, t0, t1 in sorted(rows, key=lambda x: x[1]):
             print(f"  {name:<18} 起点 {t0 - base:+7.2f}s  "
@@ -243,7 +245,7 @@ def print_report(report: SessionReport) -> None:
         print(f"\n{'=' * 16} 错误汇总: {len(errors)} 处 {'=' * 16}")
         for name, f in errors:
             if f.spans:
-                t_rel = f.spans[0].t - (w["t0"] if w else f.spans[0].t)
+                t_rel = f.spans[0].t - w["t0"]
                 when = f"+{t_rel:7.2f}s"
             else:
                 when = f"{'全局':>9}"

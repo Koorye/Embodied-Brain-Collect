@@ -47,6 +47,20 @@ _FONT_CANDIDATES = ["msyh.ttc", "simhei.ttf", "simsun.ttc", "NotoSansCJK*",
                     "uming.ttc", "ukai.ttc"]
 
 
+def _required(over: dict, key: str, cast=float):
+    """stim.yaml 是参数唯一来源:缺键直接报缺哪个,不再留代码默认。
+
+    代码字面默认会和 yaml 各存一份,两边迟早漂移(曾经 instr_s 代码
+    10s / yaml 5s)。缺键是配置问题,启动即报,好过带着错默认跑一半。
+    语义性默认(fast=1.0 不压缩、fullscreen 默认开)除外。
+    """
+    if key not in over:
+        raise SystemExit(
+            f"[stim] configs/stim.yaml 缺少 {key} — 补上该键(公共段或"
+            "所用 kind 的段)")
+    return cast(over[key])
+
+
 def stim_defaults(section: str) -> dict:
     """configs/stim.yaml 的公共键 + ``section`` 专属键,作为 argparse 默认值。"""
     try:
@@ -81,32 +95,38 @@ class BaseStim:
 
     title = "刺激程序"
 
-    # ---- CLI 公共参数(默认值可被 stim.yaml 覆盖) --------------------------
+    # ---- CLI 公共参数:默认值一律来自 stim.yaml(_required,缺键即报);
+    # 只有语义性默认留在代码(fast=1.0 不压缩、fullscreen 默认开)------
 
     @staticmethod
     def add_common_args(ap: argparse.ArgumentParser, over: dict) -> None:
-        ap.add_argument("--parallelbox", default=over.get("parallelbox", "COM14"),
+        ap.add_argument("--parallelbox", default=over.get("parallelbox", ""),
                         help="ParallelBox 串口(EEG TTL);多台放大器逗号分隔,"
                              '如 "COM5,COM14"')
         ap.add_argument("--baud", type=int,
-                        default=int(over.get("baud", 115200)))
-        ap.add_argument("--marker-host", default=over.get("udp_host", "127.0.0.1"))
+                        default=_required(over, "baud", int))
+        ap.add_argument("--marker-host", default=_required(over, "udp_host", str))
         ap.add_argument("--marker-port", type=int,
-                        default=int(over.get("udp_port", 9999)))
+                        default=_required(over, "udp_port", int))
         ap.add_argument("--hold-s", type=float,
-                        default=float(over.get("hold_s", 0.020)),
+                        default=_required(over, "hold_s"),
                         help="TTL 高电平持续时间(s)")
         ap.add_argument("--no-serial", action="store_true",
                         default=not bool(over.get("serial", True)),
                         help="不发 ParallelBox 串口")
-        ap.add_argument("--width", type=int, default=int(over.get("width", 1920)))
-        ap.add_argument("--height", type=int, default=int(over.get("height", 1080)))
+        ap.add_argument("--width", type=int,
+                        default=_required(over, "width", int))
+        ap.add_argument("--height", type=int,
+                        default=_required(over, "height", int))
         ap.add_argument("--fullscreen", action="store_true",
                         default=bool(over.get("fullscreen", True)))
         ap.add_argument("--windowed", action="store_true",
                         help="强制窗口模式(覆盖 --fullscreen)")
+        ap.add_argument("--display", type=int,
+                        default=_required(over, "display", int),
+                        help="启动屏幕索引(0=主屏;双屏时刺激屏通常为 1)")
         ap.add_argument("--font-size", type=int,
-                        default=int(over.get("font_size", 64)))
+                        default=_required(over, "font_size", int))
         ap.add_argument("--fast", type=float,
                         default=float(over.get("fast", 1.0)),
                         help="时间压缩倍率,试跑用(10 = 快 10 倍)")
@@ -132,9 +152,16 @@ class BaseStim:
         pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
         pygame.init()
         pygame.mouse.set_visible(False)
+        display = max(0, int(getattr(args, "display", 0) or 0))
+        n_displays = pygame.display.get_num_displays()
+        if display >= n_displays:
+            print(f"[stim] 配置的屏幕 {display} 不存在(共 {n_displays} 块)"
+                  "— 用主屏")
+            display = 0
         flags = (pygame.FULLSCREEN
                  if (args.fullscreen and not args.windowed) else 0)
-        self.screen = pygame.display.set_mode((args.width, args.height), flags)
+        self.screen = pygame.display.set_mode(
+            (args.width, args.height), flags, display=display)
         pygame.display.set_caption(self.title)
 
         font_path = _find_font(_FONT_CANDIDATES)

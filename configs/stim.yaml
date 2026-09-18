@@ -1,7 +1,7 @@
 # 刺激程序(marker 发送)配置。所有 stim 参数都在这里 —— launcher 不传任何
-# stim 参数,只指定用哪个 kind(--stim paradigm1 / --stim simple /
-# --stim sync_test;run_session 不带 --stim 时用 configs/session.yaml 的
-# stim 键)。
+# stim 参数,只指定用哪个 kind(--stim paradigm1 / --stim rgb /
+# --stim simple / --stim sync_test;run_session 不带 --stim 时用
+# configs/session.yaml 的 stim 键)。
 
 # ---- 公共:MarkerSender 传输 ----
 parallelbox: COM14        # ParallelBox TTL 串口;多台放大器各自对齐时逗号
@@ -9,9 +9,14 @@ parallelbox: COM14        # ParallelBox TTL 串口;多台放大器各自对齐�
                           # 全部口;单口打开/写入失败只告警并摘除,其余口照常
 baud: 115200
 hold_s: 0.020             # 串口脉冲保持时间
+display: 0                # stim 程序的启动屏幕:0=主屏;双屏时刺激屏通常为 1
+drawing_display: 1        # 图纸展示的启动屏幕(开录前照图摆放的屏);不设 = 同 display
+drawing_fullscreen: false # 图纸是否全屏展示;false = 窗口化(方便主屏同时操作)
+drawing_width: 1920       # 图纸窗口宽/高 —— 仅窗口化时生效,0 = 跟随屏幕大小;
+drawing_height: 1080       # 全屏模式下不生效(始终跟随该屏分辨率)
 udp_host: "127.0.0.1"     # UDP 标记(给 marker recorder)
 udp_port: 9999
-serial: false              # 是否写串口 TTL
+serial: true             # 是否写串口 TTL
 
 # ---- paradigm1_pickplace ----
 paradigm1:
@@ -34,6 +39,18 @@ simple:
   width: 1920
   height: 1080
   font_size: 64
+
+# ---- rgb ----
+# 纯颜色三阶段(无文字):黑底+倒数=等待(数完自动切) → 蓝=想象(空格切) →
+# 绿=操作(空格结束)。颜色用 #RRGGBB,默认纯 RGB 原色。
+rgb:
+  fullscreen: true
+  width: 1920
+  height: 1080
+  font_size: 64
+  wait_s: 5.0             # 倒数秒数(黑底 5/4/3/2/1,每秒一跳)
+  color_imag: "#0000FF"   # 阶段2 蓝
+  color_exec: "#00FF00"   # 阶段3 绿
 
 # ---- sync_test ----
 sync_test:

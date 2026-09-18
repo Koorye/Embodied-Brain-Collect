@@ -58,7 +58,7 @@ class MarkerSender:
 
     def __init__(
         self,
-        port: str | list[str] = "COM14",
+        port: str | list[str] = "",   # 空 = 没配串口;serial 开着会在构造时报错
         baud: int = 115200,
         udp_host: str = "127.0.0.1",
         udp_port: int = 9999,

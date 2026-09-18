@@ -33,7 +33,8 @@ import sys
 from dataclasses import dataclass
 
 from embodied_brain_collect.session.config import task_by_id
-from embodied_brain_collect.stim.base_stim import BaseStim, stim_defaults
+from embodied_brain_collect.stim.base_stim import (
+    BaseStim, _required, stim_defaults)
 from embodied_brain_collect.stim import marker_codes as M
 
 
@@ -55,11 +56,11 @@ class Paradigm1Stim(BaseStim):
                         help="Task to run (id in configs/tasks.yaml);"
                              "与 --environment 二选一,launcher 自动传入")
         ap.add_argument("--fix-pre-s", type=float,
-                        default=float(over.get("fix_pre_s", 2.0)))
+                        default=_required(over, "fix_pre_s"))
         ap.add_argument("--instr-s", type=float,
-                        default=float(over.get("instr_s", 10.0)))
+                        default=_required(over, "instr_s"))
         ap.add_argument("--fix-radius", type=int,
-                        default=int(over.get("fix_radius", 14)))
+                        default=_required(over, "fix_radius", int))
         ap.add_argument("--once", action="store_true",
                         help="Run exactly one trial then exit")
 

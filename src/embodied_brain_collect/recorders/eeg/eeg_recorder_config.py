@@ -3,6 +3,12 @@ from dataclasses import dataclass, field
 from ..base import BaseRecorderConfig
 
 
+def _intan_default_map() -> dict:
+    """猴台架接线的字型映射,目标码取 markers.yaml 码表的边界对当前值。"""
+    from ...stim import marker_codes as M
+    return {"0x4000": M.RUN_START, "0x2000": M.RUN_END}
+
+
 @dataclass
 class EegRecorderConfig(BaseRecorderConfig):
     host: str = "127.0.0.1"      # Curry NetStream TCP host
@@ -52,11 +58,13 @@ class IntanEegRecorderConfig(BaseRecorderConfig):
     digital_mask: int = 0xFFFF   # 事件码 = 数字字 & mask;剥空闲基线用
                                  # (接线只通部分位时码会碰撞,mask 救不了)
     # 字→码映射表(掩码后再查表;查不到不发事件)。接线只通个别位时用它把
-    # 字型翻译回 marker 码。默认值 = 猴台架 Intan 的实测接线(box bit4→DIN14,
-    # bit5→DIN13:码16→0x4000,码32→0x2000);接线改了或换台架在
-    # recorders.yaml 里覆盖,全 8 位接线时删掉此表即可。
+    # 字型翻译回 marker 码。默认 = 猴台架实测接线(box bit4→DIN14,
+    # bit5→DIN13)映射到 **markers.yaml 码表的 RUN_START/RUN_END 当前值**
+    # —— 两线接法请把 markers.yaml 的 run_start/run_end 也设成单比特码
+    # (16/32),两边才自洽;接线改了或换台架在 recorders.yaml 里覆盖,
+    # 全 8 位接线时删掉此表即可。
     digital_map: dict = field(
-        default_factory=lambda: {"0x4000": 16, "0x2000": 32})
+        default_factory=lambda: _intan_default_map())
     set_runmode: bool = True     # 录制时 set runmode run,收尾 stop——会一并
                                  # 停掉 RHX 自身的 Record,慎改
     start_data_server: bool = True  # 允许 recorder 通过命令口启动 TCP 波形服务器

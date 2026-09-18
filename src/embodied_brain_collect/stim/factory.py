@@ -1,6 +1,6 @@
 """Stim 工厂 —— launcher 按名字构建刺激程序子进程命令。
 
-与 recorder 的 ``recorder_presets.FACTORY_BY_KIND`` 同构:每个 kind 一个
+与 recorder 的 ``recorders.factory.REGISTRY`` 同构:每个 kind 一个
 模块名,``build_stim_cmd`` 返回 launcher 可以直接 ``subprocess.Popen`` 的
 argv。除了 kind 与任务 id(paradigm1 的任务轮转)之外,**任何参数都不在这里
 传** —— 全屏/窗口、时间压缩、串口开关、各阶段时长等一律由 stim 程序自己
@@ -14,6 +14,7 @@ import sys
 #: kind -> 模块名
 STIM_KINDS: dict[str, str] = {
     "paradigm1": "embodied_brain_collect.stim.paradigm1_pickplace",
+    "rgb": "embodied_brain_collect.stim.rgb_cue",
     "simple": "embodied_brain_collect.stim.simple_stim",
     "sync_test": "embodied_brain_collect.stim.sync_test",
 }

@@ -35,7 +35,7 @@ for _p in (str(_SCRIPT_DIR), str(_SCRIPT_DIR.parent / "src")):
         sys.path.insert(0, _p)
 
 from embodied_brain_collect.session.config import load_recorders  # noqa: E402
-from embodied_brain_collect.session.recorder_presets import get_weili_emg  # noqa: E402
+from embodied_brain_collect.recorders.factory import build as build_recorder  # noqa: E402
 from embodied_brain_collect.stim.base_stim import _FONT_CANDIDATES, _find_font  # noqa: E402
 
 PANEL_W, PANEL_H = 1280, 300          # 单侧面板尺寸
@@ -65,9 +65,11 @@ def configured_slots():
 
 def open_side(slot: str, cfg: dict, port: str | None, tmp: str):
     """打开一侧 EMG(不经 recorder 落盘);失败返回 None。"""
-    rec = get_weili_emg(session_dir=str(Path(tmp) / slot),
-                        port=port if port is not None else str(cfg.get("port") or ""),
-                        baud=int(cfg.get("baud") or 921600))
+    # 槽位 yaml 的键就是 Config 字段,整体透传;--left/right-port 只覆盖 port
+    params = {k: v for k, v in cfg.items() if k not in ("kind", "name", "enabled")}
+    if port is not None:
+        params["port"] = port
+    rec = build_recorder("weili_emg", params, Path(tmp) / slot)
     try:
         ok = rec._open()
     except Exception as exc:  # noqa: BLE001 — 串口占用/不存在等,给可读报错

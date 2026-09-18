@@ -27,7 +27,8 @@ import argparse
 import sys
 import time
 
-from embodied_brain_collect.stim.base_stim import BaseStim, stim_defaults
+from embodied_brain_collect.stim.base_stim import (
+    BaseStim, _required, stim_defaults)
 from embodied_brain_collect.stim.marker_codes import (EXEC_END, EXEC_START,
                                                       IMG_END, IMG_START,
                                                       RUN_END, RUN_START,
@@ -53,16 +54,16 @@ class SyncTestStim(BaseStim):
     @staticmethod
     def add_args(ap: argparse.ArgumentParser, over: dict) -> None:
         ap.add_argument("--imag-s", type=float,
-                        default=float(over.get("imag_s", 10.0)),
+                        default=_required(over, "imag_s", float),
                         help="想象阶段时长")
         ap.add_argument("--read-s", type=float,
-                        default=float(over.get("read_s", 5.0)),
+                        default=_required(over, "read_s", float),
                         help="想象序列提示画面时长(受试者睁眼阅读)")
         ap.add_argument("--cycle-s", type=float,
-                        default=float(over.get("cycle_s", 2.5)),
+                        default=_required(over, "cycle_s", float),
                         help="每个动作时长")
         ap.add_argument("--cycles", type=int,
-                        default=int(over.get("cycles", 3)),
+                        default=_required(over, "cycles", int),
                         help="执行阶段循环轮数")
 
     def __init__(self, args: argparse.Namespace) -> None:

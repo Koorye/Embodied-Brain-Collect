@@ -102,6 +102,15 @@ def load_meta() -> dict:
     return _read_yaml("meta.yaml")
 
 
+@lru_cache(maxsize=None)
+def load_markers() -> dict:
+    """marker 码表(markers.yaml 的 codes/hand_cue_base);缺失返回 {}。
+
+    代码侧有内置默认表兜底 —— 本文件缺失不影响启动。
+    """
+    return _read_yaml("markers.yaml")
+
+
 def task_by_id(task_id: int) -> dict | None:
     for t in load_tasks():
         if t.get("task_id") == task_id:

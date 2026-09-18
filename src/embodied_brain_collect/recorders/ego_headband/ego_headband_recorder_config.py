@@ -65,3 +65,11 @@ class EgoHeadbandRecorderConfig(BaseRecorderConfig):
     audio_enabled: bool = False
     require_audio: bool = True  # fail open if requested microphone is unavailable
     audio_topic: str = "/microphone/audio"
+
+    def __post_init__(self):
+        # yaml 里的 topics 是 list —— 统一归一成 tuple(字段默认即 tuple,
+        # 语义上不可变);Config 自己管归一化,工厂层不用为它写特例
+        for f in ("camera_topics", "camera_names", "imu_topics"):
+            v = getattr(self, f)
+            if v is not None and not isinstance(v, tuple):
+                setattr(self, f, tuple(v))

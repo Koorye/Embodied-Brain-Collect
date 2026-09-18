@@ -79,7 +79,7 @@ def check_one(slot: str, cfg: dict, workdir: str,
 
     # ---- 1. open(首帧闸门) ----
     try:
-        from embodied_brain_collect.session.recorder_presets import build_recorder
+        from embodied_brain_collect.recorders.factory import build_recorder
         rec = build_recorder(slot, cfg, session_dir=workdir, duration=0)
     except Exception:                                   # noqa: BLE001
         report["error"] = "recorder 构造失败(参数/依赖问题)"

@@ -271,16 +271,17 @@ python scripts/run_session.py --seed 42 --auto-keep
 
 每次录完（自动 QC 已跑）会要求输入字母 + Enter，防误触：
 
-| 输入 | 含义 | meta 标记 | 图纸模式的记账 |
-|---|---|---|---|
-| `n` | **采集成功**，进入下一张/下一个 | `success` | ✅ 图纸记入台账，之后不再出现 |
-| `r` | **采集失败**，目录留档，马上重录同一张 | `failed` | ❌ 不记账，图纸还在池里 |
-| `q` | **退出**本次采集（当前这条按成功留档） | `success` | ❌ 不记账 |
+| 输入 | 含义 | 图纸模式的记账 |
+|---|---|---|
+| `n` | **保留数据**，进入下一张/下一个 | QC 无错 → 图纸记入台账，之后不再出现；QC 有错 → 不记账（会重新抽到重采） |
+| `r` | **采集失败**，目录留档，马上重录同一张 | ❌ 不记账，图纸还在池里 |
+| `q` | **退出**本次采集（当前这条按成功留档） | 同 `n` |
 
-结局写进该条 `meta.yaml` 的 `status` 字段（`success` / `failed`），随数据
-目录走，供打包与汇总识别单条数据的有效性。全部完成后打印批次汇总（产量、
-无误比例、QC 问题分布），并写入 `run_summary.json`。QC 只供参考：有 ERROR
-的录制也可以标记成功，由你拍板。
+结局写进该条 `meta.yaml` 的 `status` 字段（三档合成：**QC 有 ERROR →
+`error`，无论按什么键；QC 无错且按 `r` → `failed`；QC 无错且按 `n`/`q` →
+`success`**），随数据目录走，供打包与汇总识别单条数据的有效性；**仅
+`success` 记图纸台账**。全部完成后打印批次汇总（产量、无误比例、QC 问题
+分布），并写入 `run_summary.json`。
 
 ### 5. 数据打包
 
@@ -488,7 +489,7 @@ src/embodied_brain_collect/
     launcher.py                 #   两段式启动 + 多进程编排
     environment.py              #   Environment 类:图纸池/台账/全屏显示
     config.py                   #   configs/ 装载
-    recorder_presets.py         #   yaml → recorder 实例工厂
+    (recorders/factory.py 仓库内)  # yaml → recorder 实例工厂
     troubleshooting.py          #   分设备排查指引
   stim/                         # 刺激程序(base_stim 骨架 + paradigm1/sync_test)
   checkers/                     # 组合式 QC
