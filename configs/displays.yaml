@@ -1,0 +1,17 @@
+# 每块屏幕的显示设置 —— 所有程序(摆放图纸/镜像/stim/辅助台)显示到
+# 该屏时一律采用这里的 mode 与分辨率,未列出的屏幕默认全屏、分辨率
+# 跟随该屏。改这里即可,不用逐个程序配置。
+#
+#   mode: fullscreen = 全屏 / windowed = 窗口化
+#   width/height 仅 windowed 时生效;0 = 跟随该屏分辨率
+#
+# 当前布局:0 = 辅助员大屏(全屏),1 = 采集员小屏(窗口化,不挡场景)
+displays:
+  0:
+    mode: windowed
+    width: 1920
+    height: 1080
+  1:
+    mode: windowed
+    width: 1920
+    height: 1080

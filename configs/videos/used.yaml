@@ -1,0 +1,7 @@
+# video_rate 素材台账(run_session_video 自动维护;删除即清零)
+fail_episode_000000:
+  uses: 1
+  last_session: /home/baai/Projects/Embodied-Brain-Collect/data/session-test/2026-09-18-13-46-35
+success_episode_000000:
+  uses: 1
+  last_session: /home/baai/Projects/Embodied-Brain-Collect/data/session-test/2026-09-18-13-46-35

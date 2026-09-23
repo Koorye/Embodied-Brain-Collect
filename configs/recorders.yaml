@@ -1,0 +1,136 @@
+# 采集设备配置：每个 slot 用什么实现、什么参数。
+# kind 对应 recorder_presets.py 里的工厂名；其余键是该工厂的参数。
+# 未列出的参数用代码默认值。hz 是轮询上限：实际低于 hz 时不做任何等待。
+
+recorders:
+  # cam_head:
+  #   enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+  #   kind: depthai_camera
+  #   name: "Luxonis OAK-D-W-97"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+  #   hz: 30
+
+  ego_headband:
+    kind: net_ego_headband
+    name: "Ego Headband V1.5"     # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    host: "192.168.55.6"          # 设备(wired_tcp server)地址;本机作为 TCP 客户端连过去
+    port: 5577                    # 设备推流端口
+    connect_timeout: 10           # TCP 连接超时(s)
+    encoder: auto                 # auto=GPU(hevc_nvenc)优先,不可用自动回退 CPU(libx265)
+    audio_enabled: true           # true = 连设备的麦克风话题,PCM 落 wav(需设备端支持)
+    open_timeout: 60              # open 阶段要走完时钟同步握手,给足余量
+    hz: 201                       # 轮询上限;每 poll 会排空接收缓冲
+
+  cam_left_wrist:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: opencv_camera
+    name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    idx: 3            # 左腕相机，USB 集线器左起第二口
+    hz: 30
+
+  cam_right_wrist:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: opencv_camera
+    name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    idx: 2            # 右腕相机
+    hz: 30
+
+  cam_third:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: opencv_camera
+    name: "Intel RealSense D455f"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    idx: 1
+    hz: 30
+    preview_port: 9996  # 辅助员控制台的 JPEG 预览流(session/assist_console);0=关闭
+
+  eeg:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: curry_eeg
+    name: "Compumedics Neuroscan SynAmps2"
+    host: "127.0.0.1"
+    port: 4455
+    hz: 1000
+    # 开录阻抗门禁是**自动**的:开录时经 NetStream 12/13 触发一次阻抗
+    # 检测并做通过率检查,不达标拒开。时序红线(实测违反会 Device Error,
+    # 只能重启 Curry/放大器):阻抗结束后放大器 ~10s 才恢复读数,恢复前
+    # recorder 绝不断开连接(失败路径也先等恢复);也不发 AmpConnect。
+    open_timeout: 60   # 开录含阻抗检测(取数 + 等恢复读数,最长 ~52s),
+                        # 默认 30s 不够
+    # BrainCo BCIGo 32 通道帽备选(软件同步,无硬件 TTL):把上面 kind 换成
+    # brainco_eeg 即可 —— BraincoEegRecorderConfig 会忽略 Curry 专属键
+    # (impedance_* 等),host/port/sample_rate 等 BrainCo 键按需覆盖:
+    # kind: brainco_eeg
+    # sample_rate: 500
+    # name: "BrainCo BCIGo"
+    # host: ""              # 空 = mDNS 自动发现;固定 IP 则填写
+    # port: 0               # 0 = 用扫描到的端口
+    # hz: 1000              # recorder 轮询上限,不是采样率
+    # sample_rate: 250      # 250 / 500 / 1000 / 2000
+    # gain: 6               # 1, 2, 4, 6, 8, 12, 24
+    # signal: normal        # normal / test_signal
+    # scan_timeout_s: 10.0
+    # sync_udp_port: 9998   # stim 抄送软件触发(与 stim.yaml sync_udp_port 一致;0=不抄送)
+    # device_sn: ""         # 非空则只连该序列号的帽子
+
+  emg_left:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: weili_emg
+    name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    port: "COM31"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
+    baud: 921600
+    hz: 1000
+
+  emg_right:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: weili_emg
+    name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    port: "COM30"
+    baud: 921600
+    hz: 1000
+
+  eye:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: neon_eye_async
+    name: "Pupil Labs Neon Wearable Eye Tracker"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    hz: 1000
+    open_timeout: 120     # 内部预热最坏 ~90s(发现设备 10s + 传感器 10s + 三路首帧 3x20s);
+                          # 默认 30s 看门狗会在正常冷启动时误判超时
+
+  hand_pose:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: manus_hand_pose
+    name: "MANUS Metaglove Pro Haptics"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    hz: 1000
+    open_timeout: 60      # landscape 15s + 等两只手套配对 + 首份数据 10s,默认 30s 不够
+
+  position:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: openvr_position
+    name: "HTC VIVE Tracker 3.0"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    device_classes: tracker
+    expected_devices: 3   # 开录时已连接 tracker 少于该数 → open 失败,录制不开始
+    # 角色→设备绑定:npz 列序固定 = 这里的书写顺序,开录时逐台校验,
+    # 缺/多/对不上都拒绝开录。角色名同时决定打包特征名 observation.<角色>_pose。
+    # 匹配值 = OpenVR 序列号(推荐,永不变化;见 open 日志 serial=)或 VIVE
+    # Hub 里设置的角色(vive_tracker_*)。VIVE Hub 显示的设备 ID(FA61…)
+    # 不是序列号,匹配不到。不配 = 列序随开机先后漂移。
+    # 序列号 ↔ VIVE 角色对照(2026-09-21 按当天的 VIVE 角色确认):
+    #   61-BH3702202 = vive_tracker_chest        61-BH3700181 = vive_tracker_left_elbow
+    #   61-BH3702186 = vive_tracker_right_elbow
+    role_serial_map: {"left_wrist": "61-BH3700181", "right_wrist": "61-BH3702186", "chest": "61-BH3702202"}
+    hz: 1000
+
+  marker:
+    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    kind: udp_marker
+    name: "UDP Marker"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+    host: "127.0.0.1"
+    port: 9999
+    hz: 30
+
+  # wristband:
+  #   kind: wristband
+  #   name: "MAIYUAN"              # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
+  #   device_name: "THU-PULSE-V3"   # 空 = 按 service UUID 探测;多台同时在附近时用 address 最稳
+  #   hz: 100
+  #   open_timeout: 60              # open 重试共享预算:单次尝试 ≈ 扫描10s + 连接~4s + UTC同步~2s,失败后歇 2s 再试
+  #   open_attempts: 3              # 扫描→连接→对时整体重试次数(含首次);录制中掉线仍然直接报错,不重连

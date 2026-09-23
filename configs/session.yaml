@@ -1,0 +1,32 @@
+# 会话编排配置 —— CLI 显式传参优先于本文件。
+# 入口脚本已拆分:run_session_env.py(图纸)/ run_session_tasks.py(任务)/
+# run_session_video.py(视频);本文件的 mode 仅剩兼容壳 run_session.py
+# 在读,stim 是 env/tasks 两入口的默认刺激。
+# mode: env   = 图纸模式。队列来自 configs/environments 下未采集的图纸
+#               (按场景目录台账 used.yaml 扣除),开录前全屏显示图纸,
+#               采集员照图摆放后按 s + Enter 才正式开录;paradigm1 的
+#               指令屏按图纸所在场景目录 config.yaml 的场景/任务显示。
+#       tasks = 任务列表模式。队列来自 configs/tasks.yaml 随机采样;
+#               paradigm1 的指令屏显示任务库里的任务名。
+# stim: 刺激程序 kind(paradigm1 / rgb / simple / sync_test),参数在 configs/stim.yaml。
+#       图纸模式下建议 paradigm1(sync_test/simple 不消费场景/任务信息;
+#       simple 还要求 task-id,只在 tasks 模式可用)。
+mode: env
+stim: rgb
+
+# pack_episode: true = 每条录完且 QC 无错、操作员保留(n/q)后,
+# 自动把该条打成独立 episode 数据集(data/lerobot/<班次根>/<会话名>)。
+# 入口脚本 --pack-episode 可显式开启;error/failed 的目录留档但不出数据集。
+pack_episode: true
+
+# 采集信息(操作员维护):顶层除 mode/stim 外的键都是 —— 每次开录抄进该
+# session 的 meta.yaml 固化,打包时 pack_daily 汇总进数据集
+# meta/collect_info.jsonl;以录制时快照为准,之后改这里不影响已录数据。
+# 全部键可用入口脚本命令行覆盖(--collector-id / --set 键=值,
+# 可多次);
+# 键名避开 YAML 布尔词(yes/no/on/off/true/false)。
+# 场景名不在这里维护 —— 图纸模式下以图纸 config.yaml 的 scene.name 为准,
+# 打包时随 meta/collect_info.jsonl 逐 episode 记录。
+collector_id: 1      # 采集编号(第几次采集/批次号)
+max_runs: 50         # 单次会话最大采集条数(图纸/任务数);0 或不设 = 不限。
+                     # CLI 可用 --max-runs 覆盖

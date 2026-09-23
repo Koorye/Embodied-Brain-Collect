@@ -1,0 +1,12 @@
+# 辅助员控制台配置 —— 独立程序,不参与主采集逻辑,随时开关均不影响录制。
+# 启动:python scripts/assist_console.py
+#
+# 画面布局:左 = stim 屏幕实时镜像(截屏),右 = third camera 实时画面。
+# 辅助员看本屏判断采集阶段与采集员动作,直接按键盘空格切换阶段
+# (空格作用于持有焦点的刺激窗口)。
+display: 0          # 控制台全屏显示的屏幕(辅助员大屏)
+stim_display: 1     # 被镜像的刺激屏(采集员小屏)
+mirror: true        # 是否显示刺激屏截屏镜像
+camera: true        # 是否显示 third camera 预览
+camera_port: 9996   # 相机 JPEG 预览流端口(与 recorders.yaml 一致)
+fps: 30             # 控制台刷新率

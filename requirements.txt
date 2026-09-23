@@ -1,0 +1,15 @@
+numpy==2.2.6
+opencv-python
+pyzmq>=25.0.0
+pyserial==3.5
+pupil-labs-realtime-api==1.8.0
+depthai==3.6.1
+pyrealsense2
+openvr
+matplotlib
+scipy
+loguru==0.7.3
+bleak==3.0.2
+pyyaml
+# bcigo-sdk>=1.0.2       # BrainCo BCIGo 帽子采集(brainco_eeg)才需要;按官方渠道安装
+mss                     # 辅助员控制台的刺激屏截屏(assist_console)

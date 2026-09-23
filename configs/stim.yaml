@@ -1,0 +1,100 @@
+# 刺激程序(marker 发送)配置。所有 stim 参数都在这里 —— launcher 不传任何
+# stim 参数,只指定用哪个 kind(--stim paradigm1 / --stim rgb /
+# --stim simple / --stim sync_test / --stim video_rate;run_session 不带
+# --stim 时用 configs/session.yaml 的 stim 键)。
+
+# ---- 公共:MarkerSender 传输 ----
+parallelbox: COM14        # ParallelBox TTL 串口;多台放大器各自对齐时逗号
+                          # 分隔多口,如 "COM5,COM14" —— 同一个码同时打到
+                          # 全部口;单口打开/写入失败只告警并摘除,其余口照常
+baud: 115200
+hold_s: 0.020             # 串口脉冲保持时间
+display: 1                # stim 程序的启动屏幕:0=主屏;双屏时刺激屏通常为 1
+drawing_display: 1        # 图纸展示的启动屏幕(开录前照图摆放的屏);不设 = 同 display
+# 摆放图纸/镜像屏的全屏与分辨率统一在 configs/displays.yaml 按屏配置
+udp_host: "127.0.0.1"     # UDP 标记(给 marker recorder)
+udp_port: 9999
+serial: true              # 是否写串口 TTL
+sync_udp_port: 0          # 再抄一份 marker 到此 UDP(BrainCo 软件同步,与
+                          # recorders.yaml eeg.sync_udp_port 一致;0=不抄送)
+                          # 不设/留空 = 不自动拉起,需手动启动)
+
+# ---- paradigm1_pickplace ----
+paradigm1:
+  fullscreen: true
+  fast: 1.0               # 时间压缩(演练用)
+  width: 1920
+  height: 1080
+  font_size: 64
+  fix_radius: 14
+  fix_pre_s: 2.0          # 注视点预呈现
+  instr_s: 5.0           # 指令呈现时长
+
+# ---- simple ----
+# 最小刺激:任务名 → 空格开跑 → 空格结束 → 退出;只发 P1_RUN_START(16)/
+# P1_RUN_END(32) 两个 marker,与 paradigm1 的精简边界码一致,没有注视点/
+# 指令等其他画面。Esc 中止也会补 RUN_END 保住对齐码对。任务列表模式用
+# (需要 --task-id,launcher 自动传);图纸模式不支持。
+simple:
+  fullscreen: true
+  width: 1920
+  height: 1080
+  font_size: 64
+
+# ---- rgb ----
+# 纯颜色三阶段(无文字):黑底+倒数=等待(数完自动切) → 蓝=想象(空格切) →
+# 绿=操作(空格结束)。颜色用 #RRGGBB,默认纯 RGB 原色。
+rgb:
+  fullscreen: true
+  width: 1920
+  height: 1080
+  font_size: 64
+  wait_s: 5.0             # 倒数秒数(黑底 5/4/3/2/1,每秒一跳)
+  color_imag: "#0000FF"   # 阶段2 蓝
+  color_exec: "#00FF00"   # 阶段3 绿
+
+# ---- sync_test ----
+sync_test:
+  fullscreen: false
+  width: 1920
+  height: 1080
+  font_size: 72
+  imag_s: 10.0            # 想象阶段时长
+  read_s: 5.0             # 想象序列提示画面时长
+  cycle_s: 2.5            # 每个动作时长
+  cycles: 3               # 执行阶段循环轮数
+
+# ---- video_rate(RLHF 视频打分) ----
+# 注视 → 指令1 → 图像(被试) → 指令2 → 视频(真实时长) → 打分(被试)
+# → 重播打标(Shift=对/回车=错,可重做) → 播放质检。
+# 素材统一放 configs/videos/(success_*/fail_*.mp4),由
+# scripts/run_session_video.py 运行时抽取组合,经 --trials-json 传给 stim;
+# 第一帧播放时直接从视频现读,不落地 png。这里的键是公共参数模板,
+# image_path/video_path/trials 仅在手动单独跑 stim 时作兜底。
+# trial 码位上限见 markers.yaml 的 video_rate 段(当前 12)。
+video_rate:
+  n_trials: 6                  # 无 --trials-json/trials 时的 trial 数
+  iti_s: 1.0                   # trial 间隔秒数
+  iti_space: false             # true=trial 之间按回车再继续
+  fullscreen: false            # demo 用窗口;正式实验可改 true
+  width: 1920
+  height: 1080
+  font_size: 56
+  fix_radius: 14
+  fix_pre_s: 2.0               # 红点注视(固定)
+  instr1_s: 4.0                # 第一段文字指令(固定)
+  instr2_s: 4.0                # 第二段文字指令(固定)
+  instr1_text: "请观看视频的第一帧，想象自己{task}。"   # {task} = 子集
+                          # config.yaml 的 task 字段(run_session_video 填入);
+                          # 手动单独跑 stim 时原样显示,含占位符属正常
+  instr2_text: "请观看遥操视频，评估动作执行质量，并在播放结束后对动作质量评分"
+  image_path: "stimuli/ref.png"   # 单素材兜底;空 = 从视频抽第一帧
+  video_path: "stimuli/demo.mp4"  # 单素材兜底
+  rate_min: 0                  # 打分范围(数字键)
+  rate_max: 5
+  rate_prompt: "请为动作质量打分"
+  replay_prompt: "关键节点做对用Shift标记，关键节点做错用回车标记。"
+  replay_redo_prompt: "刚才这一遍打标需要重做吗？"
+  play_qc_prompt: "本次遥操视频播放是否有问题？"
+  max_replay_attempts: 3       # 同一 trial 最多重播打标几遍(含第一遍)
+  result_dir: "data/ratings"   # 打分 JSON 输出目录(rating_<时间戳>.json)

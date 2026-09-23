@@ -1,0 +1,9 @@
+# 子集 = 一个任务。开录时 run_session_video 读这里:
+#   task        任务指令(必填)—— 填进 stim.yaml video_rate.instr1_text 的
+#               {task} 占位符,作为被试的想象内容
+#   scene       可选:场景名,随 session meta 固化
+#   name        可选:显示名(meta 的 task_name);缺省 = 目录名
+#   instr1_text / instr2_text   可选:完整覆盖默认指令模板
+task: 双手分别拿起笔和笔盖，盖上笔盖后把笔放入笔筒
+scene: 书桌
+name: 盖笔盖
