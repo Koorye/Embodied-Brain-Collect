@@ -37,3 +37,4 @@ tests/**/sessions/
 third_party/
 
 configs/environments/
+/configs/*.yaml
