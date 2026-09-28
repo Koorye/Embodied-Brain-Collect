@@ -31,6 +31,8 @@ wristband                     observation.wristband_ppg            3 路,100 Hz
 wristband                     observation.wristband_imu            6 路,50 Hz
 wristband                     observation.wristband_vitals         温度/血氧,1 Hz 值
 eeg                           observation.eeg                      按通道数
+eeg(阻抗门禁)                observation.eeg_impedance            单行,timestamp=0;
+                                                                   每通道均值 Ω + 门禁汇总
 emg_left/right                observation.emg_left/right           8 通道
 emg_*(imu)                    observation.imu_left/right           6 路
 eye(gaze)                     observation.gaze                     2 路
@@ -89,6 +91,15 @@ _EYE_NPZ, _EYE_TS, _EYE_MP4 = "eye.npz", "scene_timestamps", "eye.mp4"
 # 头环麦克风(dtype=audio):PCM 本体只在 ego_headband/microphone.wav,npz
 # 里是逐块索引元数据(设备侧 sample_index、wav 内采样位置、read_complete_ns)
 MICROPHONE_KEY = "observation.headband_microphone"
+
+# EEG 阻抗门禁结果(Curry open 时触发一次,随 eeg.npz 落盘的 eeg_impedance_*):
+# 单行常量流 —— 每 episode 一个独立 parquet、一行,列 = 各通道均值(Ω,
+# 顺序同 eeg_channel_names)+ 门禁汇总(pass_rate / gate_pass / n_snapshots)。
+# 时间戳与时间轴无关,固定 0(CONSTANT_TS 哨兵):窗口掩码直接放行,
+# 写帧不做平移。BrainCo / 关门禁的会话 npz 没有这些字段,不产出该流。
+EEG_IMPEDANCE_KEY = "observation.eeg_impedance"
+_EEG_IMP_SUMMARY = ["pass_rate", "gate_pass", "n_snapshots"]
+CONSTANT_TS = 0.0
 
 # 旧版 session meta 没有 recorders 字段时的默认设备显示名
 # (与 configs/recorders.yaml 的 name 注释一致;新版 meta 优先)
@@ -291,6 +302,21 @@ def _window_mask(ts: np.ndarray, win: tuple[float | None, float | None]) -> np.n
     return mask
 
 
+def _is_constant_stream(ts: np.ndarray) -> bool:
+    """单行常量流(eeg 阻抗门禁):timestamp 为 0 哨兵,与时间轴无关。"""
+    return len(ts) == 1 and ts[0] == CONSTANT_TS
+
+
+def _stream_in_window(ts: np.ndarray, win: tuple[float | None, float | None],
+                      t0: float) -> bool:
+    """预扫用:该流在窗口内是否有数据;常量单行流恒在。"""
+    if not len(ts):
+        return False
+    if _is_constant_stream(ts):
+        return True
+    return bool((_window_mask(ts, win) & (ts >= t0)).any())
+
+
 def _stream_rate(ts: np.ndarray) -> float:
     if len(ts) < 2:
         return 0.0
@@ -355,6 +381,22 @@ def load_parquet_streams(session_dir: Path):
             names = [str(s) for s in z["eeg_channel_names"][:n_ch]]
             out_extra.append(("observation.eeg", ts,
                               z["eeg_data"][:, :n_ch].astype(np.float32), names))
+
+        # 阻抗门禁结果与波形对齐无关(开录时刻的一次性检测),没有 PC
+        # 时间戳的会话也照样带出来
+        if "eeg_impedance_ohm" in z.files:
+            imp = np.asarray(z["eeg_impedance_ohm"],
+                             dtype=np.float32).reshape(1, -1)
+            names = [str(s) for s in z["eeg_channel_names"][: imp.shape[1]]]
+            summary = np.asarray(
+                [[float(z["eeg_impedance_pass_rate"]),
+                  float(bool(z["eeg_impedance_check_pass"])),
+                  float(z["eeg_impedance_n_snapshots"])]], dtype=np.float32)
+            out_extra.append((
+                EEG_IMPEDANCE_KEY,
+                np.asarray([CONSTANT_TS], dtype=np.float64),
+                np.hstack([imp, summary]).astype(np.float32),
+                names + _EEG_IMP_SUMMARY))
 
     # EMG 臂环 ×2(左/右腕)+ 板载 IMU
     for side in ("left", "right"):
@@ -524,6 +566,13 @@ def load_stream_index(session_dir: Path):
             n_ch = int(z["eeg_n_eeg_channels"])
             names = [str(s) for s in z["eeg_channel_names"][:n_ch]]
             out.append(("observation.eeg", ts, names, n_ch))
+        if "eeg_impedance_ohm" in z.files:
+            n_imp = int(np.asarray(z["eeg_impedance_ohm"]).reshape(-1).size)
+            imp_names = ([str(s) for s in z["eeg_channel_names"][:n_imp]]
+                         + _EEG_IMP_SUMMARY)
+            out.append((EEG_IMPEDANCE_KEY,
+                        np.asarray([CONSTANT_TS], dtype=np.float64),
+                        imp_names, len(imp_names)))
 
     # EMG ×2 + 板载 IMU
     for side in ("left", "right"):
@@ -782,7 +831,9 @@ def build_feature_specs(sessions: list[Path],
         for key, ts, vals, names in load_parquet_streams(sd):
             if key in specs or key not in common or not len(ts):
                 continue
-            rate = _stream_rate(ts)
+            # 常量单行流没有速率可言,spec 的 fps 取主轴帧率(避免 0)
+            rate = (MASTER_FPS if _is_constant_stream(ts)
+                    else _stream_rate(ts))
             specs[key] = {
                 "dtype": "float32",
                 "shape": (vals.shape[1],),
@@ -1038,11 +1089,17 @@ def write_episode(ds, session_dir: Path, task_label: str, master_abs: np.ndarray
 
     present: set[str] = set()
     for key, ts, vals, _names in streams:
-        mask = _window_mask(ts, win) & (ts >= t0)
-        ts_w, vals_w = ts[mask], vals[mask]
-        if not len(ts_w):
-            continue
-        rel = (ts_w - t0).astype(np.float64)
+        if _is_constant_stream(ts):
+            # 单行常量流(如 eeg 阻抗门禁):不过窗口、不平移,
+            # rel timestamp 固定 0 原样落一行
+            ts_w, vals_w = ts, vals
+            rel = ts.astype(np.float64)
+        else:
+            mask = _window_mask(ts, win) & (ts >= t0)
+            ts_w, vals_w = ts[mask], vals[mask]
+            if not len(ts_w):
+                continue
+            rel = (ts_w - t0).astype(np.float64)
         samples = _progress(zip(rel, vals_w), total=len(rel),
                             desc=f"  {key}", unit="sample", leave=False)
         for t, v in samples:
@@ -1504,7 +1561,10 @@ def main(argv: list[str] | None = None) -> int:
         required |= info["present"]
     kept: list[dict] = []
     for info in sessions:
-        missing = sorted(required - info["present"])
+        # 阻抗门禁单行流是附属信息而非模态:装备不支持(BrainCo)或关门禁
+        # 的会话不因别人有它而被整体剔除 —— 缺它自己的 episode 走
+        # write_episode 的 dropped 机制跳过该特征,其余模态照常打包
+        missing = sorted((required - info["present"]) - {EEG_IMPEDANCE_KEY})
         if missing:
             print(f"[spec] 剔除 '{info['dir'].name}': 缺少模态 {missing}")
         else:
@@ -1600,7 +1660,7 @@ def _probe_session(sd: Path, video_slots, args) -> dict | None:
     t0 = float(master_abs[0])
     present: set[str] = set()
     for key, ts, vals, _names in load_parquet_streams(sd):
-        if len(ts) and (_window_mask(ts, win) & (ts >= t0)).any():
+        if _stream_in_window(ts, win, t0):
             present.add(key)
 
     mic = load_microphone_index(sd)

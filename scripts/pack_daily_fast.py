@@ -44,9 +44,9 @@ for _p in (str(_SCRIPT_DIR), str(_SCRIPT_DIR.parent / "src")):
 
 import pack_daily as base  # noqa: E402
 from pack_daily import (  # noqa: E402
-    MASTER_FPS, MICROPHONE_KEY, WINDOW,
-    _cleanup_images, _is_windowed, _stream_rate,
-    _window_mask, cut_video_aligned, discover_video_slots,
+    EEG_IMPEDANCE_KEY, MASTER_FPS, MICROPHONE_KEY, WINDOW,
+    _cleanup_images, _is_constant_stream, _is_windowed, _stream_in_window,
+    _stream_rate, _window_mask, cut_video_aligned, discover_video_slots,
     filter_qc_errors, filter_meta_status, find_sessions, load_marker_window,
     load_microphone_index, load_parquet_streams, load_stream_index,
     load_task_label, make_master_timeline, probe_video_shape,
@@ -89,9 +89,12 @@ def _probe_session_index(sd: Path, video_slots, full: bool) -> dict | None:
     for key, ts, names, width in load_stream_index(sd):
         if not len(ts):
             continue
-        if (_window_mask(ts, win) & (ts >= t0)).any():
+        if _stream_in_window(ts, win, t0):
             present.add(key)
-            stream_meta[key] = (_stream_rate(ts), int(width),
+            # 常量单行流没有速率可言,spec 的 fps 取主轴帧率(避免 0)
+            rate = (MASTER_FPS if _is_constant_stream(ts)
+                    else _stream_rate(ts))
+            stream_meta[key] = (rate, int(width),
                                 list(names) if names is not None else None)
 
     # 麦克风不在 load_stream_index 里(块时间戳要过 marker 窗口),单独探
@@ -153,9 +156,11 @@ def _probe_session_full(sd: Path, video_slots, full: bool) -> dict | None:
     present: set[str] = set()
     stream_meta: dict[str, tuple[float, int, list[str] | None]] = {}
     for key, ts, vals, names in load_parquet_streams(sd):
-        if len(ts) and (_window_mask(ts, win) & (ts >= t0)).any():
+        if _stream_in_window(ts, win, t0):
             present.add(key)
-            stream_meta[key] = (_stream_rate(ts), int(vals.shape[1]), names)
+            rate = (MASTER_FPS if _is_constant_stream(ts)
+                    else _stream_rate(ts))
+            stream_meta[key] = (rate, int(vals.shape[1]), names)
 
     mic = load_microphone_index(sd)
     if mic is not None:
@@ -355,11 +360,17 @@ def _write_episode(ds, session_dir: Path, task_label: str,
 
     present: set[str] = set()
     for key, ts, vals, _names in streams:
-        mask = _window_mask(ts, win) & (ts >= t0)
-        ts_w, vals_w = ts[mask], vals[mask]
-        if not len(ts_w):
-            continue
-        rel = (ts_w - t0).astype(np.float64)
+        if _is_constant_stream(ts):
+            # 单行常量流(如 eeg 阻抗门禁):不过窗口、不平移,
+            # rel timestamp 固定 0 原样落一行
+            ts_w, vals_w = ts, vals
+            rel = ts.astype(np.float64)
+        else:
+            mask = _window_mask(ts, win) & (ts >= t0)
+            ts_w, vals_w = ts[mask], vals[mask]
+            if not len(ts_w):
+                continue
+            rel = (ts_w - t0).astype(np.float64)
         for t, v in zip(rel, vals_w):
             ds.add_frame(key, v, float(t))
         present.add(key)
@@ -481,7 +492,9 @@ def main(argv: list[str] | None = None) -> int:
             required |= info["present"]
         kept = []
         for info in sessions:
-            missing = sorted(required - info["present"])
+            # 阻抗门禁单行流是附属信息而非模态:缺它的会话不剔除
+            # (与 pack_daily.main 同一口径,episode 内走 dropped 机制)
+            missing = sorted((required - info["present"]) - {EEG_IMPEDANCE_KEY})
             if missing:
                 print(f"[spec] 剔除 '{info['dir'].name}': 缺少模态 {missing}")
             else:

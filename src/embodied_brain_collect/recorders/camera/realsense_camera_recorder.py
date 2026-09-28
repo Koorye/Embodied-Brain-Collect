@@ -54,9 +54,11 @@ class RealsenseCameraRecorder(BaseCameraRecorder):
 
     def _poll(self, ts):
         assert self._pipeline is not None
-        try:
-            frames = self._pipeline.wait_for_frames(timeout_ms=1)
-        except RuntimeError:
+        # try_wait_for_frames:1ms 内没有新帧返回 None(千赫兹轮询的正常
+        # 空闲路径,不抛超时异常);设备拔出/管线损坏则 SDK 的 RuntimeError
+        # 原样抛出 —— 录制终止,已录数据随 _record 的 finally 落盘
+        frames = self._pipeline.try_wait_for_frames(timeout_ms=1)
+        if frames is None:
             return
 
         color = frames.get_color_frame()

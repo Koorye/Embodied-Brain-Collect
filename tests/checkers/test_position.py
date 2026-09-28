@@ -1,9 +1,9 @@
-"""Position checker 的设备轴检查(DeviceCount)单元测试。"""
+"""Position checker 的设备轴检查(DeviceCount / ValidAlways)单元测试。"""
 
 import numpy as np
 import pytest
 
-from embodied_brain_collect.checkers.position import DeviceCount
+from embodied_brain_collect.checkers.position import DeviceCount, ValidAlways
 
 
 def levels(out):
@@ -12,6 +12,10 @@ def levels(out):
 
 def messages(out):
     return " | ".join(f.message for f in out.findings)
+
+
+def subjects(out):
+    return [f.subject for f in out.findings]
 
 
 def _pos(n_dev, t=50, seed=0):
@@ -49,4 +53,50 @@ def test_flat_layout_counts_as_one_device(ctx):
 
 def test_expected_is_configurable(ctx):
     out = DeviceCount(expected=2).run(ctx(arrays={"positions_m": _pos(2)}))
+    assert out.findings == []
+
+
+# =============================================================================
+# ValidAlways — 所有设备必须始终有效,任一无效样本即 ERROR
+# =============================================================================
+
+def test_valid_always_passes_clean(ctx):
+    out = ValidAlways().run(ctx(arrays={"positions_m": _pos(3)}))
+    assert out.findings == []                    # 无 valid 字段 = 全部有效
+    assert out.stats["invalid_samples"] == {f"dev{i}": 0 for i in range(3)}
+
+
+def test_valid_always_errors_on_any_invalid_sample(ctx):
+    """掉一台(哪怕几帧)→ ERROR,subject 按设备。"""
+    pos = _pos(3)
+    valid = np.ones(pos.shape[:2], dtype=bool)
+    valid[10:15, 1] = False
+    out = ValidAlways().run(ctx(arrays={
+        "positions_m": pos, "valid": valid,
+        "serials": np.asarray(["61-A", "61-B", "61-C"])}))
+    assert levels(out) == ["ERROR"]
+    assert subjects(out) == ["61-B"]
+    assert "5 个无效样本" in messages(out)
+    assert out.stats["invalid_samples"]["61-B"] == 5
+
+
+def test_valid_always_reports_each_offender(ctx):
+    pos = _pos(3)
+    valid = np.ones(pos.shape[:2], dtype=bool)
+    valid[3, 0] = False
+    valid[7, 2] = False
+    out = ValidAlways().run(ctx(arrays={"positions_m": pos, "valid": valid}))
+    assert levels(out) == ["ERROR", "ERROR"]
+    assert sorted(subjects(out)) == ["dev0", "dev2"]
+
+
+def test_valid_always_respects_run_window(ctx):
+    """窗口外的无效样本(预热前的历史数据)不计入。"""
+    pos = _pos(3)
+    valid = np.ones(pos.shape[:2], dtype=bool)
+    valid[2, 1] = False                          # 窗口前
+    out = ValidAlways().run(ctx(arrays={
+        "positions_m": pos, "valid": valid,
+        "timestamps_s": np.arange(len(pos), dtype=float)},
+        window={"t0": 10.0, "t1": 40.0}))
     assert out.findings == []

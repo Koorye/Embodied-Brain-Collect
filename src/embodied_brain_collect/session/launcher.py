@@ -183,7 +183,7 @@ def launch(
     confirm_timeout: float = 30.0,
 ) -> int:
     """Run each *recorders* entry in its own process until stim ends,
-    duration elapses, or Ctrl+C.
+    duration elapses, a recorder dies, or Ctrl+C.
 
     Startup is two-phase: children open, report ready, and start recording
     immediately (pre-roll) — being connected proves nothing about throughput,
@@ -191,7 +191,9 @@ def launch(
     then confirms data is actually flowing; only when **all** slots confirm
     does the parent launch stim and broadcast commit, which drops the
     pre-roll and restarts every session clock.  Duration anchors on the
-    commit as well.
+    commit as well.  A slot that dies mid-recording ends the whole launch
+    right away (rc=1, survivors save what they have) — recording on with a
+    dead modality only produces partial data.
 
     Args:
         recorders: pre-configured recorder instances (``_open`` not yet called)
@@ -365,6 +367,15 @@ def launch(
                             "Recording process exited unexpectedly before receiving stop "
                             f"(code=0) — see {name}/{name}.log for details")
                     del procs[name]
+
+            if runtime_errors:
+                # 某 slot 录制中途退场 = 这路数据已经断了,多录一秒都是
+                # 残缺数据 —— 立即收摊:其余 slot 走正常收尾落盘(finally),
+                # stim 一并终止;rc 记 1,上层跳过 QC 直接进 n/r/f/q 选择
+                print("\n[launcher] 有 recorder 异常退出 — 提前结束本次录制,"
+                      "其余模态收尾保存 ...")
+                rc = 1
+                break
 
             # --- heartbeat aggregation ---
             while True:
@@ -715,7 +726,7 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"[launcher] 采集未成功(rc={rc})— 图纸 {env_rel} "
                   "留在抽取池")
-    if not args.skip_qc:
+    if not args.skip_qc and not getattr(rc, "runtime_errors", None):
         run_qc(run_dir)
     if pack_episode_on and rc == 0:
         run_pack_episode(run_dir)

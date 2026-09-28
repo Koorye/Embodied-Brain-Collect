@@ -425,7 +425,10 @@ def record_one(session_root: Path, job: dict, *, stim: str,
     rc = 1
     try:
         rc = launch(recs, stim_cmd=stim_cmd, duration=args.duration)
-        if not args.skip_qc:
+        # 某 recorder 录制中异常退出(launcher 已提前收摊):残缺数据的
+        # QC 结论没有意义还拖时间 —— 跳过 check,直接回 run_queue 的
+        # n/r/f/q 选择(失败排查提示由 run_queue 按 runtime_errors 打印)
+        if not args.skip_qc and not getattr(rc, "runtime_errors", None):
             run_qc(run_dir)
     except KeyboardInterrupt:
         print("\n[run_session] Ctrl+C — 录制中止,目录保留")
@@ -468,6 +471,7 @@ def run_queue(session_root: Path, queue: list[dict], *, stim: str,
     slot_fail: Counter = Counter()  # slot -> 本次会话累计出错次数(排查提示用)
     queue_pos = 0
     task_no = 0
+    auto_keep = bool(getattr(args, "auto_keep", False))
     interrupted = False
     try:
         while queue_pos < len(queue):
@@ -534,8 +538,12 @@ def run_queue(session_root: Path, queue: list[dict], *, stim: str,
 
             def _status() -> str:
                 # 状态合成:strict_rc 下没录完整(rc!=0)一律 failed;
-                # 否则 QC 有 ERROR → error,n/q 保留且无错 = success
+                # auto_keep 无人值守,recorder 异常退出的录制没有人工
+                # 确认,不冒充 success;否则 QC 有 ERROR → error,
+                # n/q 保留且无错 = success
                 if strict_rc and rc != 0:
+                    return "failed"
+                if auto_keep and runtime_errors:
                     return "failed"
                 return "error" if qc_error else "success"
 

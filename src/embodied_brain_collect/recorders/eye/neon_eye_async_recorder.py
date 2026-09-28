@@ -99,6 +99,9 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
         self._start_evt = threading.Event()     # go: 开始录制
         self._loop_done = threading.Event()     # persistent loop exited
         self._record_rc: int = 0
+        # 各流最近一次来样本的时刻(perf_counter)—— 链路静默判定基线,
+        # 流任务每收一个样本就刷新;录制循环按 link_timeout 判死
+        self._stream_last: dict[str, float] = {}
         self._first_gaze_evt = threading.Event()
         self._first_imu_evt = threading.Event()
         self._first_scene_evt = threading.Event()
@@ -126,8 +129,11 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
         self._start_evt.set()
         self._loop_done.wait()
         if self._record_rc != 0:
-            self.logger.error(
-                f"[eye:neon] recording ended with rc={self._record_rc}")
+            # 循环带错收场 → 原地抛错,子进程非零退出,launcher 按异常
+            # 退出收摊(旧写法只记一条日志后 0 退出)
+            raise RuntimeError(
+                f"眼动录制循环异常结束 (rc={self._record_rc})— "
+                "原因见上方错误日志")
 
     # ==================================================================
     # Persistent loop thread (open gate + recording share one event loop)
@@ -144,6 +150,10 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 self._open_error = f"{type(exc).__name__}: {exc}"
                 self._open_ok = False
                 self._ready_evt.set()
+            else:
+                # 已过 open 门之后的崩溃是显式错误:_record 醒来后据此致命
+                # 退出(旧写法只记日志,子进程 0 退出,原因只留在日志里)
+                self._record_rc = 1
         finally:
             self._loop_done.set()
 
@@ -166,7 +176,9 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 device_info = await Network().wait_for_new_device(
                     timeout_seconds=10)
                 self._device_info = device_info
-            async with Device(address=device_info.addresses[0], port=device_info.port) as dev:
+            dev = Device(address=device_info.addresses[0], port=device_info.port)
+            await dev.__aenter__()
+            try:
                 status = await dev.get_status()
                 offset_ms = await self._sync_clock(status)
                 self._acc("pc_to_phone_offset_ms", offset_ms)
@@ -214,11 +226,24 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 self._ready_evt.set()
                 self._log("[eye:neon] standby warm — streams running, "
                           "waiting for go (capture-only, dropped at go)")
+                # 链路静默阈值(standby 与录制两个循环里的判死检查共用)
+                link_timeout = float(getattr(self.config, "link_timeout", 0.0) or 0.0)
 
                 # ---- wait for go, or abort ----
                 while not self._start_evt.is_set():
                     if stop.is_set() or self.stop_event.is_set():
                         return    # 中止:standby 期间不写任何数据
+                    if link_timeout > 0:
+                        now = time.perf_counter()
+                        dead = [n for n, last in self._stream_last.items()
+                                if now - last > link_timeout]
+                        if dead:
+                            self._log(f"[eye:neon] {', '.join(dead)} 流超过 "
+                                      f"{link_timeout:g}s 没有新样本 — "
+                                      "连接已死,设备可能已断电/断网",
+                                      level="ERROR")
+                            rc = 1
+                            return    # 还没 go:不写数据,直接致命退出
                     await asyncio.sleep(0.05)
                 self._recording = True
                 # go 之前队列里全是 standby 数据——清空,录制从 go 开始。
@@ -226,6 +251,7 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 self._imu_q.clear()
                 self._scene_ts_q.clear()
                 self._log("[eye:neon] go — recording")
+
 
                 # ---- 录制循环:唯一的数据工作就是 _drain() 把采集队列
                 # acc 下来,外加监督流任务是否异常退出 ----
@@ -235,11 +261,20 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                     self._maybe_commit()
                     self._drain()
                     for t in tasks:
-                        if t.done() and t.exception() is not None:
+                        if not t.done() or t.cancelled():
+                            continue
+                        if t.exception() is not None:
                             self._log(f"[eye:neon] stream task error — {type(t.exception()).__name__}", level="ERROR")
                             rc = 1
                             stop.set()
                             break
+                        # 任务不带异常地结束 = 设备端把流安静掐断(眼镜断电/
+                        # 断连),一样致命 —— 旧写法对这种死法毫无反应
+                        self._log("[eye:neon] stream task ended prematurely "
+                                  "— 设备可能已断开", level="ERROR")
+                        rc = 1
+                        stop.set()
+                        break
                     # scene 写盘任务不在 tasks 里,单看:ffmpeg 死了它也会死,
                     # 不监督的话会话会"正常"保存,mp4 却只有前几帧
                     w = self._scene_writer_task
@@ -250,8 +285,34 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                                   f"{w.exception()}", level="ERROR")
                         rc = 1
                         stop.set()
+                    # 链路静默:断电/断网不发 FIN 的半开 TCP 上,流任务挂住、
+                    # 样本停了,但不会有任何显式错误 —— 只有"多久没来样本"
+                    # 能暴露(link_timeout,0 = 关闭)
+                    if link_timeout > 0:
+                        now = time.perf_counter()
+                        dead = [n for n, last in self._stream_last.items()
+                                if now - last > link_timeout]
+                        if dead:
+                            self._log(f"[eye:neon] {', '.join(dead)} 流超过 "
+                                      f"{link_timeout:g}s 没有新样本 — "
+                                      "连接已死,设备可能已断电/断网",
+                                      level="ERROR")
+                            rc = 1
+                            stop.set()
                     await asyncio.sleep(0.01)
                 self._drain()    # 停表前的最后一小批也收下
+            finally:
+                # 设备关闭也限时:半开连接上 close 的 await 可能永不返回,
+                # _loop_done 不 set → _record 永远等不到 → 子进程退不出去,
+                # launcher 看起来毫无反应
+                try:
+                    await asyncio.wait_for(
+                        dev.__aexit__(None, None, None), timeout=5.0)
+                except asyncio.TimeoutError:
+                    self._log("[eye:neon] device close 超时 — 放弃等待,直接退出",
+                              level="WARNING")
+                except Exception:
+                    pass
 
         except KeyboardInterrupt:
             self._log("[eye:neon] Ctrl+C (outer)", level="WARNING")
@@ -390,13 +451,15 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
 
     async def _gaze_task(self, url, stop):
         from pupil_labs.realtime_api.streaming import receive_gaze_data
-        # run_loop=True: aiortsp auto-reconnects on transient drops (the
-        # same option the simple API's stream manager uses).
-        async for g in receive_gaze_data(url, run_loop=True,
+        # run_loop=False:aiortsp 的自动重连会把"设备断开"吞成后台静默重连
+        # —— 任务不结束也不抛错,录制对断电/断连毫无反应。关掉它:流一断,
+        # 读取任务当场带错/结束,录制循环的监督立即接住并终止录制。
+        async for g in receive_gaze_data(url, run_loop=False,
                                          log_level=logging.WARNING):
             if stop.is_set():
                 break
             self._first_gaze_evt.set()
+            self._stream_last["gaze"] = time.perf_counter()
             ts = g.timestamp_unix_seconds + self._clock_offset_s
             xy = np.array([g.x, g.y], dtype=np.float32)
             if self._standby_mode:
@@ -408,11 +471,12 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
 
     async def _imu_task(self, url, stop):
         from pupil_labs.realtime_api.streaming import receive_imu_data
-        async for d in receive_imu_data(url, run_loop=True,
+        async for d in receive_imu_data(url, run_loop=False,
                                         log_level=logging.WARNING):
             if stop.is_set():
                 break
             self._first_imu_evt.set()
+            self._stream_last["imu"] = time.perf_counter()
             ts = d.timestamp_unix_seconds + self._clock_offset_s
             gyro = np.array([d.gyro_data.x, d.gyro_data.y, d.gyro_data.z],
                             dtype=np.float32)
@@ -432,11 +496,12 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
         self._log("[eye:neon] scene stream opening — first frame takes ~5 s "
                       "while the camera starts ...", echo=False)
         if self.config.no_scene_video:
-            async for f in receive_video_frames(url, run_loop=True,
+            async for f in receive_video_frames(url, run_loop=False,
                                                 log_level=logging.WARNING):
                 if stop.is_set():
                     break
                 self._first_scene_evt.set()
+                self._stream_last["scene"] = time.perf_counter()
                 ts = f.timestamp_unix_seconds + self._clock_offset_s
                 if self._standby_mode:
                     self._scene_ts_q.append(ts)    # 由录制循环 _drain 存
@@ -456,11 +521,12 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
         self._scene_writer_task = writer_task    # 主循环监督 + 收尾排空用
         dropped = 0
         try:
-            async for f in receive_video_frames(url, run_loop=True,
+            async for f in receive_video_frames(url, run_loop=False,
                                                 log_level=logging.WARNING):
                 if stop.is_set():
                     break
                 self._first_scene_evt.set()
+                self._stream_last["scene"] = time.perf_counter()
                 if self._standby_mode and (not self._recording
                                            or not self._committed):
                     continue    # 预热(open→go、go→commit):不解码不写盘 ——

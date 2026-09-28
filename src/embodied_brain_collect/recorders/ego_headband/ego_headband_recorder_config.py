@@ -40,6 +40,10 @@ class EgoHeadbandRecorderConfig(BaseRecorderConfig):
     port: int = 5577             # device stream port
     connect_timeout: float = 10.0
     require_synced: bool = False  # True = fail open if clock sync didn't verify
+    link_timeout: float = 0.1     # 链路静默超时:连续这么久一个字节都没收到 →
+                                  # 连接已死(断电/断网不发 FIN 的半开 TCP 上,
+                                  # recv 只会一直超时,永远不会有显式错误)。
+                                  # 本设备持续高速出流,5s 静默 = 必死。0 = 关闭
 
     # ---- topic -> slot mapping (order defines the camera slots / imu{j}) ----
     camera_topics: tuple = DEFAULT_CAMERA_TOPICS

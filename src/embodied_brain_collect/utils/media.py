@@ -69,3 +69,38 @@ def ffprobe_count(path: Path) -> int:
         raise RuntimeError(f"ffprobe 读不出 {path} (rc={exc.returncode}):"
                            f" {stderr}") from exc
     return int(out.stdout.strip() or 0)
+
+
+def ffprobe_video_info(path: Path) -> dict:
+    """一次 ffprobe 调用拿齐 QC 解码需要的容器元数据。
+
+    返回 ``{"n_packets", "fps", "width", "height"}``;fps 解不出时为
+    ``None``,由调用方回退默认值。容器读不出时抛 RuntimeError(与
+    :func:`ffprobe_count` 同口径,stderr 带原因)。
+    """
+    try:
+        out = subprocess.run(
+            [media_tool("ffprobe"), "-v", "error", "-select_streams", "v:0",
+             "-count_packets",
+             "-show_entries", "stream=nb_read_packets,r_frame_rate,"
+                              "width,height",
+             "-of", "json", str(path)],
+            capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = (exc.stderr or "").strip()
+        raise RuntimeError(f"ffprobe 读不出 {path} (rc={exc.returncode}):"
+                           f" {stderr}") from exc
+    import json
+    streams = json.loads(out.stdout).get("streams") or [{}]
+    st = streams[0]
+    fps = None
+    num, _, den = (st.get("r_frame_rate") or "0/0").partition("/")
+    try:
+        if float(den):
+            fps = float(num) / float(den)
+    except ValueError:
+        pass
+    return {"n_packets": int(st.get("nb_read_packets") or 0),
+            "fps": fps,
+            "width": int(st.get("width") or 0),
+            "height": int(st.get("height") or 0)}

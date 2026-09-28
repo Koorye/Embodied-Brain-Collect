@@ -306,6 +306,17 @@ def main(argv: list[str] | None = None) -> int:
         print("没有可检查的 slot(全部 enabled: false?)", file=sys.stderr)
         return 2
 
+    # 磁盘空间门禁:一次多路采集约 1GB/分钟,写满 = 全部 recorder 中途
+    # 爆 Errno 28(mic 先炸,头环整路终止,连 npz 都存不下)
+    free_gb = shutil.disk_usage(Path.cwd()).free / 2**30
+    if free_gb < 50:
+        print(f"[error] 磁盘剩余空间仅 {free_gb:.0f}GB(<50GB)— 一轮采集"
+              "约 1GB/分钟,随时会写满导致全部数据损坏。清理后再预检。",
+              file=sys.stderr)
+        return 2
+    if free_gb < 100:
+        print(f"[warn] 磁盘剩余 {free_gb:.0f}GB — 采集约 1GB/分钟,注意空间")
+
     print(f"预检 {len(slots)} 个 slot:{', '.join(slots)}")
     print(f"配置目录: {configs_dir()}")
     tmp_root = Path(tempfile.mkdtemp(prefix="preflight-"))

@@ -17,3 +17,9 @@ class PositionRecorderConfig(BaseRecorderConfig):
     # 缺一台、多一台未绑定、两角色配同一设备,都直接拒绝开录。序列号在
     # open 日志设备清单行里(serial=…)。不配 = 按枚举顺序排列 —— 那个顺序
     # 跟设备开机先后走,会话间会漂移,左右手可能互换。
+    require_all_valid: bool = True
+    # 录制中所有 tracker 必须始终有效:任一 tracker 出现无效 pose(遮挡/
+    # 掉线/断光塔)即运行期错误 —— 录制立即收摊(launcher 端按异常退出
+    # 处理:其余模态落盘、跳过 QC 直接进 n/r/f/q 选择)。launcher 预热段
+    # (commit 前)豁免 —— 那段数据本来就会被丢弃。QC 侧 ValidAlways
+    # 用同一口径复核落盘数据。false = 关闭看门狗(不推荐)。

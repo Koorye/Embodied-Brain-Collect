@@ -72,6 +72,37 @@ class ValidFraction(BaseCheck):
 
 
 @dataclass(frozen=True)
+class ValidAlways(BaseCheck):
+    """所有设备必须始终有效 — 任一无效样本即 ERROR。
+
+    与录制端看门狗(``require_all_valid``,任一 tracker 无效 pose 即终止
+    录制)同一口径的数据侧复核:看门狗关闭、独立 run()、或旧数据复检时,
+    带无效样本的数据照样拦在打包门外。逐台计数,subject = 设备序列号。
+    """
+
+    def applies(self, ctx: CheckContext) -> bool:
+        return ctx.arr("positions_m") is not None
+
+    def run(self, ctx: CheckContext) -> CheckOutput:
+        pos, valid, names = ctx.artifact("devices", lambda: _devices(ctx))
+        out = CheckOutput()
+        if pos is None or valid.shape[0] == 0:
+            return out
+        invalid: dict[str, int] = {}
+        for i, name in enumerate(names):
+            n_bad = int((~valid[:, i]).sum())
+            invalid[name] = n_bad
+            if n_bad:
+                out.findings.append(self.finding(
+                    "ERROR",
+                    f"{n_bad} 个无效样本(要求全程有效)— 遮挡/掉线/断"
+                    "光塔,与录制端看门狗同一规则",
+                    subject=name, field="valid", observed=float(n_bad)))
+        out.stats["invalid_samples"] = invalid
+        return out
+
+
+@dataclass(frozen=True)
 class TrackingGap(TimestampGap):
     """The same gap detection, fed the poses that are actually usable.
 
@@ -179,6 +210,7 @@ class PositionChecker(BaseChecker):
     checks = [
         ts_checks("combined"),
         ValidFraction(),
+        ValidAlways(),
         TrackingGap(),
         Teleport(),
         DeviceCount(),

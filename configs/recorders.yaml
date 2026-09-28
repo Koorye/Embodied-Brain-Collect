@@ -10,6 +10,7 @@ recorders:
   #   hz: 30
 
   ego_headband:
+    enabled: true
     kind: net_ego_headband
     name: "Ego Headband V1.5"     # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
     host: "192.168.55.6"          # 设备(wired_tcp server)地址;本机作为 TCP 客户端连过去
@@ -19,6 +20,9 @@ recorders:
     audio_enabled: true           # true = 连设备的麦克风话题,PCM 落 wav(需设备端支持)
     open_timeout: 60              # open 阶段要走完时钟同步握手,给足余量
     hz: 201                       # 轮询上限;每 poll 会排空接收缓冲
+    link_timeout: 0.1             # 链路静默判死:连续这么久一个字节都没收到 →
+                                  # 连接已死(断电/断网不发 FIN 的半开 TCP 上 recv
+                                  # 只会一直超时,没有显式错误)。0 = 关闭
 
   cam_left_wrist:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
@@ -78,6 +82,8 @@ recorders:
     port: "COM31"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
     baud: 921600
     hz: 1000
+    link_timeout: 0.1    # 链路静默判死:出过字节后静默这么久 → 臂环已断开
+                         # (serial read 只返回空,没有异常)。0 = 关闭
 
   emg_right:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
@@ -86,12 +92,15 @@ recorders:
     port: "COM30"
     baud: 921600
     hz: 1000
+    link_timeout: 0.1    # 同 emg_left
 
   eye:
-    enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
+    enabled: true        # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: neon_eye_async
     name: "Pupil Labs Neon Wearable Eye Tracker"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
     hz: 1000
+    link_timeout: 0.1             # 链路静默判死:某路流连续这么久没有新样本 →
+                                  # 连接已死(半开 TCP 上流任务只是挂住)。0 = 关闭
     open_timeout: 120     # 内部预热最坏 ~90s(发现设备 10s + 传感器 10s + 三路首帧 3x20s);
                           # 默认 30s 看门狗会在正常冷启动时误判超时
 
@@ -118,6 +127,9 @@ recorders:
     #   61-BH3702186 = vive_tracker_right_elbow
     role_serial_map: {"left_wrist": "61-BH3700181", "right_wrist": "61-BH3702186", "chest": "61-BH3702202"}
     hz: 1000
+    require_all_valid: true   # 录制中任一 tracker 无效 pose(遮挡/掉线)→ 立即
+                              # 终止录制:其余模态落盘、跳过 QC 直接进 n/r/f/q;
+                              # 预热段(commit 前)豁免。false = 关闭看门狗(不推荐)
 
   marker:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)

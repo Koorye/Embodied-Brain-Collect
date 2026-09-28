@@ -655,7 +655,96 @@ class VideoDecode:
 
 def decode_video(mp4: Path, frame_ts, window: dict | None,
                  rate_hz: float = 2.0) -> VideoDecode:
-    """Decode ``mp4`` once, collecting everything the video checks need."""
+    """Decode ``mp4`` once, collecting everything the video checks need.
+
+    引擎是仓库自带的 ffmpeg 而不是 cv2:解码+抽帧+转灰度在一条 ffmpeg
+    管道里完成,管道上只流过抽中的整帧灰度图,均值/帧差仍在 numpy 里按
+    原口径计算。同样逐帧解码 1734 帧的 HEVC 文件,cv2 read 循环 ~9s,
+    这条管道 ~3s——差的全部是逐帧 Python 循环和 BGR 转换拷贝。采样位置、
+    lums/diffs/t_samp 的语义与 cv2 路径逐值一致(已对冻结/健康视频验证),
+    ffmpeg 缺失时回退 :func:`_decode_video_cv2`。
+    """
+    from ..utils.media import ffprobe_video_info, media_tool
+    try:
+        ff = media_tool("ffmpeg")
+    except RuntimeError:                      # 机器上没有 ffmpeg
+        return _decode_video_cv2(mp4, frame_ts, window, rate_hz)
+    import subprocess
+
+    out = VideoDecode(file=mp4.name, rate_hz=rate_hz)
+    try:
+        info = ffprobe_video_info(mp4)
+    except RuntimeError:                      # 容器读不出:与 cv2 打不开同判
+        out.opened = False
+        return out
+    if not (info["width"] and info["height"]):
+        out.opened = False
+        return out
+    out.fps = info["fps"] or 30.0
+    out.n_frames = info["n_packets"]
+    stride = max(1, int(round(out.fps / rate_hz)))
+
+    ts = np.asarray(frame_ts, dtype=np.float64) if frame_ts is not None else None
+    i0 = i1 = None
+    if window is not None and ts is not None and ts.size:
+        inside = np.flatnonzero((ts >= window["t0"]) & (ts <= window["t1"]))
+        if inside.size:
+            i0, i1 = int(inside[0]), int(inside[-1])
+    out.n_window = (i1 - i0 + 1) if i0 is not None else None
+    out.i0, out.i1 = i0, i1
+
+    # 0-based 容器帧号:窗口内 + stride 步长(cv2 路径的 1-based
+    # ``i0 < n <= i1+1`` 且 ``n % stride == 1`` 与之逐位置等价)
+    if i0 is None:
+        ks = np.arange(0, max(out.n_frames, 0), stride)
+    else:
+        k0 = -(-i0 // stride) * stride
+        ks = np.arange(k0, i1 + 1, stride) if k0 <= i1 else np.empty(0, int)
+
+    # select 表达式里的逗号必须转义,否则被 filtergraph 当过滤器分隔符
+    cond = (f"if(between(n\\,{i0}\\,{i1})\\,not(mod(n\\,{stride}))\\,0)"
+            if i0 is not None else f"not(mod(n\\,{stride}))")
+    # -noautorotate:统计按存储像素算,和 cv2 路径同一口径
+    cmd = [ff, "-hide_banner", "-loglevel", "error", "-noautorotate",
+           "-i", str(mp4), "-map", "0:v:0", "-vsync", "0",
+           "-vf", f"select='{cond}',format=gray", "-f", "rawvideo", "-"]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL)
+    except OSError:
+        return _decode_video_cv2(mp4, frame_ts, window, rate_hz)
+    assert proc.stdout is not None
+    frame_bytes = info["width"] * info["height"]
+    lums: list[float] = []
+    diffs: list[float] = []
+    t_samp: list[float] = []
+    prev: np.ndarray | None = None
+    n_got = 0
+    while n_got < len(ks):
+        buf = proc.stdout.read(frame_bytes)
+        if len(buf) < frame_bytes:
+            break
+        gray = np.frombuffer(buf, dtype=np.uint8).reshape(info["height"],
+                                                          info["width"])
+        lums.append(float(gray.mean()))
+        k = int(ks[n_got])
+        t_samp.append(float(ts[k]) if ts is not None and k < ts.size
+                      else k / out.fps)
+        if prev is not None:
+            diffs.append(float(np.abs(gray.astype(np.float32) - prev).mean()))
+        prev = gray
+        n_got += 1
+    proc.stdout.close()
+    out.opened = proc.wait() == 0
+    out.lums = np.asarray(lums, dtype=np.float64)
+    out.diffs = np.asarray(diffs, dtype=np.float64)
+    out.t_samp = np.asarray(t_samp, dtype=np.float64)
+    return out
+
+
+def _decode_video_cv2(mp4: Path, frame_ts, window: dict | None,
+                      rate_hz: float = 2.0) -> VideoDecode:
+    """cv2 回退路径(机器上没有 ffmpeg 时)。语义与 ffmpeg 路径一致。"""
     import cv2
 
     out = VideoDecode(file=mp4.name, rate_hz=rate_hz)

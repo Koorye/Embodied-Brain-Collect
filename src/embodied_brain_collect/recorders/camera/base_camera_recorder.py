@@ -138,6 +138,13 @@ class BaseCameraRecorder(BaseRecorder):
         ``{key}_timestamps`` 多出预热帧数(历史教训)。丢弃后容器的第一帧
         就是 commit 后第一帧,1:1 严格成立;确认阶段照常计数。
         """
+        if self._write_failed:
+            # 写盘线程已报过显式错误(ffmpeg died / 磁盘写失败)→ 原地
+            # 抛错终止:继续录只会产出没有视频内容、只剩时间戳的数据
+            raise RuntimeError(
+                "视频写盘管线已故障"
+                f"({', '.join(sorted(self._write_failed))})— 见写失败日志,"
+                "停止录制")
         if self._launch_mode and not self._committed:
             self._frames_precommit += 1
             return

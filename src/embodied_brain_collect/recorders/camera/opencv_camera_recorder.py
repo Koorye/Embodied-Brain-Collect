@@ -68,7 +68,11 @@ class OpencvCameraRecorder(BaseCameraRecorder):
         assert self._cap is not None
         ok, frame = self._cap.read()
         if not ok or frame is None:
-            return
+            # cap.read() 取帧失败(USB 掉线/驱动死)→ 原地抛错终止录制:
+            # 静默 return 只会录一份没有这路画面的数据
+            raise RuntimeError(
+                f"相机读取失败(cap.read() → 空帧, idx={self.config.idx})"
+                "— 设备可能已掉线")
         # Absolute host wall-clock at frame grab (unix seconds).
         now = time.time()
         self._send_preview(frame, now)

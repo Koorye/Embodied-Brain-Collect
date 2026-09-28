@@ -1,5 +1,31 @@
 # 修改记录
 
+## 1.5.0 — 2026-09-23
+
+### QC 视频解码换 ffmpeg 管道引擎 / 新增 QC 剖析工具
+
+* **decode_video 引擎从 cv2 换成仓库自带 ffmpeg**:QC 的视频检查
+  (FrameCountMatch/BlackFrame/Freeze 共享的那次解码)原本用 cv2 逐帧
+  ``read()``,~6ms/帧 全花在 HEVC 软解 + BGR 转换拷贝 + 逐帧 Python
+  循环上——单会话 QC 50.8s 里的 49.8s 都是它(ego_headband 4 路视频
+  占 41.4s)。现在解码 + 窗口/步长抽帧 + 转灰度在一条 ffmpeg.exe
+  管道里完成,管道上只流过抽中的整帧灰度图,lums/diffs/t_samp 仍按
+  原口径在 numpy 里计算;容器元数据(帧数/fps/宽高)走新增的
+  ``ffprobe_video_info``(一次调用,包计数与 ``ffprobe_count``、
+  pack 完整性门同口径;实测 8 个视频 ffprobe 计数与 OpenCV 解码计数
+  逐文件相等)。采样位置与时间戳逐值一致;lums/diffs 仅存在
+  cv2(BGR→灰度)与 ffmpeg(直接取 Y)解码路径差 ≤1%,远小于
+  黑屏/冻结阈值余量,冻结/健康/不同编码视频的 findings 与旧引擎
+  逐条一致(含真实整段冻结案例)。单会话 QC 50.8s → 16.5s
+  (ego_headband 41.4→11.4s,eye 6.4→2.5s,camera ~2.2→1.7s)。
+  机器上没有 ffmpeg 时回退原 cv2 路径(``_decode_video_cv2``)。
+  评估过 GPU(NVDEC)方案:仅快 ~13%,且 pip 版 OpenCV 预编译
+  ffmpeg 未编 cuvid,不值得引入硬件依赖。
+* **新增 ``scripts/qc_profile.py``**:逐会话、逐模态、逐 check 的
+  QC 剖析工具(墙钟耗时 + NPZ 解压耗时 + 命中统计),用于定位耗时
+  大头、评估检查项去留;用法与 ``scripts/qc.py`` 一致,支持
+  day 目录批量与 ``--json``。
+
 ## 1.4.3 — 2026-09-21
 
 ### 合并现场分支:Curry 阻抗门禁 / tracker 台数闸门 / 窗口边缘缺口检查 / 麦克风 ALSA 采集时间戳打包
@@ -36,8 +62,59 @@
   改按 microphone_stamp_ns 对齐(不再 read_complete 回推),缺/坏逐块
   时间戳的会话跳过音频;pack_daily_fast 补回麦克风探测与 audio 特征
   规格(此前 fast 版根本不打包音频)。MICROPHONE.md 补 capture basis。
+* **阻抗门禁结果随打包落盘**:pack_daily 新增独立特征
+  ``observation.eeg_impedance`` —— 每 episode 一个独立 parquet、恰好
+  一行(timestamp 固定 0:常量流哨兵,不参与窗口截取/平移),列 =
+  各通道阻抗均值(Ω,顺序同 ``eeg_channel_names``)+ pass_rate /
+  gate_pass / n_snapshots 汇总;pack_daily_fast(轻量索引探测)与
+  pack_episode 复用同一实现。BrainCo / ``impedance_check: false`` 的
+  会话没有阻抗字段,自然不产出该特征,且**不触发**"缺模态剔除"
+  (阻抗是附属信息,不参与模态并集否决,缺失的 episode 走 dropped
+  机制跳过)。
+* **recorder 录制中异常退出 → 立即收摊**:launcher 录制阶段发现任一
+  slot 进程退场(异常码或未收到 stop 就退出)不再干等 stim/duration,
+  立即结束本次录制 —— 其余 slot 走正常收尾落盘、stim 一并终止,rc 记
+  1 并带 runtime_errors;record_one 与 launcher CLI 据此**跳过自动
+  QC** 直接回 n/r/f/q 选择(残缺数据的 QC 结论没有意义还拖时间,失败
+  排查提示照常打印)。auto_keep 无人值守下这类录制不冒充 success
+  (标 failed,不进打包/台账);交互模式下操作员看过提示仍可按 n
+  显式保留。
+* **VIVE tracker 全程有效看门狗**:position 新增 ``require_all_valid``
+  (默认开,recorders.yaml 可关)—— 录制中任一 tracker 出现无效 pose
+  (遮挡/掉线/断光塔)即原地抛 RuntimeError:录制当场终止,已录的有
+  效段随收尾落盘,launcher 按"异常退出"立即收摊(其余模态落盘、跳过
+  QC 直接进 n/r/f/q 选择);launcher 预热段(commit 前)豁免 —— 那段
+  数据本来就会被丢弃;独立 run() 全程判定。QC 侧新增 ValidAlways 同
+  口径复核:落盘数据里任一无效样本都是 ERROR(逐台计数,subject =
+  序列号),看门狗关闭/独立录制/旧数据复检同样拦在打包门外。掉线设
+  备在心跳行的 ``valid=N/3`` 字段肉眼可见。
+* **全部 recorder 错误原生传播(不再吞错)**:逐一清理数据通路里的
+  log-and-return —— 设备/通路错误一律让本来的异常抛出,子进程非零退
+  出,launcher 收摊并报出问题:curry 流中断/坏包头/半包超时、intan
+  波形流断开、brainco SDK 线程带错退出,原样抛 OSError/RuntimeError;
+  OpenCV 相机 ``cap.read()`` 失败、realsense 改 ``try_wait_for_frames``
+  (空闲返回 None,设备错误原样抛)、写盘管线故障(ffmpeg died/磁盘
+  写失败)后下一帧入队即抛;ego 头环对端断开/连接错误在 ``_recv`` 里
+  直接抛、设备端断流(server error/坏帧)带 ``_ended_reason`` 抛错
+  (旧写法 stop_event 自停:子进程 0 退出,没有任何报错);manus 手套
+  断开时 SDK 不抛错、只会把 dict 变空/返回 None —— 出过数据的手套一旦
+  停发立即抛错(单只即判,不等第二只;从未出数的启动窗口交给 launcher
+  确认阶段);weili EMG 臂环断电/USB 松动时 serial read 只返回空字节
+  (没有任何异常),新增 ``link_timeout`` 链路静默判死 —— 出过字节后
+  静默超时即抛(首次字节前不武装,慢启动交给确认阶段;yaml 0.1s,
+  0 = 关闭);neon 眼动关掉 aiortsp 自动重连(``run_loop=False``,旧值会
+  把设备断开吞成后台静默重连 —— 实测 demo:断开不抛异常,async-for 仅
+  安静退出),流任务提前结束/带异常退出都记 rc=1;新增 ``link_timeout``
+  (默认 yaml 0.1s)链路静默判死 —— 断电/断网不发 FIN 的半开 TCP 上,
+  recv/流任务只是挂住、永远不会有显式错误,只有"多久没来字节/样本"能
+  暴露,standby 与录制两个阶段都判;``Device`` 的关闭 ``__aexit__`` 也
+  限时不等(5s),否则半开连接上收尾的 await 挂住会让子进程永远退不出
+  去,launcher 看起来毫无反应。
+  仍依赖 QC 兜底的盲区:设备静默但无任何显式信号的死法(depthai 拔
+  出后 tryGet 持续 None、blackrock 回调停摆、TCP 半开(设备直接断电
+  不发 FIN)下的头环/眼动)不做超时猜测(按口径:只认显式错误)。
 * 测试:DeviceCount / 窗口边缘 / 麦克风打包与 commit / 头环真机脚本
-  等新用例。
+  / 阻抗打包单行流等新用例。
 * **辅助员控制台(session/assist_console,纯被动)**:辅助员屏
   (``assist_console_display``,默认主屏)分屏显示 stim 屏幕镜像
   (``assist_mirror_port``,stim 每帧降采样 JPEG ~10fps 推流)+ 第三

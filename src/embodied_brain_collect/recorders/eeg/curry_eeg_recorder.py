@@ -390,41 +390,29 @@ class CurryEegRecorder(BaseEegRecorder):
     # ------------------------------------------------------------------
 
     def _poll(self, ts: float) -> None:
-        if self._sock is not None and not self._read_packet():
-            # stream failed: log once and stop reading — like the other
-            # recorders, the launcher owns session stop
-            self._close_socket()
+        if self._sock is not None:
+            self._read_packet()
 
-    def _read_packet(self) -> bool:
-        """One streaming request + one complete packet; False on failure."""
+    def _read_packet(self) -> None:
+        """One streaming request + one complete packet.
+
+        socket.timeout = 空闲流,正常返回;其余任何错误(对端断开等
+        OSError、坏包头、body 半包超时)原样抛出 —— 录制终止,已录数据
+        随 _record 的 finally 收尾落盘,launcher 按异常退出收摊。"""
         assert self._sock is not None
         try:
             self._sock.sendall(_stream_request())
             hdr = self._recv_exact(20)
         except socket.timeout:
-            return True  # idle stream
-        except OSError as exc:
-            self._log(f"[eeg:curry] stream failed: {exc}")
-            return False
+            return  # idle stream
         magic, code, _rq, start_sample, packet_size, usize = _HEADER.unpack(hdr)
         if magic not in (_REQ_MAGIC, _RESP_MAGIC):
-            self._log("[eeg:curry] bad packet header; stopping reads",
-                      level="ERROR")
-            return False
-        # body 可能是 532KB 的大块(1000 样本 x 133 通道):header 超时当 idle
-        # 无害,但 body 读一半超时会丢半包导致后续流错位 —— 给足 5s,真超时
-        # 则明确停读并报错,绝不在错位上继续解析。
-        try:
-            body = self._recv_exact(packet_size, timeout=5.0)
-        except socket.timeout:
-            self._log("[eeg:curry] body timeout (5s) — stream out of sync, "
-                      "stopping reads", level="ERROR")
-            return False
-        except OSError as exc:
-            self._log(f"[eeg:curry] stream failed: {exc}", level="ERROR")
-            return False
+            raise RuntimeError(f"bad packet header: magic={magic!r}")
+        # body 可能是 532KB 的大块(1000 样本 x 133 通道):header 超时当
+        # idle 无害,但 body 读一半超时会丢半包导致后续流错位 —— 给足 5s,
+        # 真超时让 socket.timeout 抛出去终止录制,绝不在错位上继续解析。
+        body = self._recv_exact(packet_size, timeout=5.0)
         self._handle_packet(code, start_sample, usize, body)
-        return True
 
     def _handle_packet(self, code: int, start_sample: int,
                        uncompressed_size: int, body: bytes) -> None:

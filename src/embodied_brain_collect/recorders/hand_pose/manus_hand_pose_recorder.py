@@ -21,6 +21,7 @@ class ManusHandPoseRecorder(BaseHandPoseRecorder):
         super().__init__(config)
         self._pub = None          # ManusDataPublisher
         self._glove_ids: list[int] = []
+        self._glove_seen: set[int] = set()   # 出过数据的手套(断开判定基线)
         self._glove_sides: dict[int, str] = {}   # glove_id → "Left"/"Right"
 
     # ---- lifecycle ----------------------------------------------------------
@@ -99,11 +100,21 @@ class ManusHandPoseRecorder(BaseHandPoseRecorder):
 
         for gid in self._glove_ids:
             data = self._pub.GetGloveData(gid)
+            ergo = data.get("ergonomics") if data else None
+            nodes = data.get("raw_nodes") if data else None
+            if ergo or nodes:
+                self._glove_seen.add(gid)
+            elif gid in self._glove_seen:
+                # 手套断开后 SDK 不抛错:dict 变空/None 还可能返回旧快照。
+                # 出过数据的手套一旦停发就是断开 —— 原地抛错终止录制
+                # (旧写法 continue,一只手套掉了录制毫无反应)
+                raise RuntimeError(
+                    f"Manus 手套 {gid} 停止出数据(GetGloveData → "
+                    f"{'None' if data is None else '空'})— 可能已断开")
             if data is None:
                 continue
 
             # ---- ergonomics (finger joint angles) ----
-            ergo = data.get("ergonomics")
             if ergo:
                 have_ergo = True
                 # entry["type"] is side-agnostic (e.g. "ThumbMCPSpread"),
@@ -116,7 +127,6 @@ class ManusHandPoseRecorder(BaseHandPoseRecorder):
                         ergo_flat[offset + idx] = entry["value"]
 
             # ---- skeleton ----
-            nodes = data.get("raw_nodes")
             if nodes:
                 have_skel = True
                 pos = np.array([n["position"] for n in nodes], dtype=np.float32)

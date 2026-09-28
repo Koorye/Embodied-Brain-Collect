@@ -279,6 +279,31 @@ class OpenvrPositionRecorder(BasePositionRecorder):
         self._acc_arr("quaternions_wxyz", quat)
         self._acc_arr("euler_rpy_deg", euler)
         self._acc_arr("valid", valid)
+        self._check_all_valid(valid, ts)
+
+    def _check_all_valid(self, valid: np.ndarray, ts: float) -> None:
+        """所有设备必须始终有效(require_all_valid,默认开)。
+
+        任一 tracker 无效即抛 RuntimeError —— 录制当场终止,已录有效段随
+        _record 的 finally 收尾落盘,launcher 按异常退出收摊。launcher
+        预热段(commit 前)豁免:那段数据会被整体丢弃,不参与判定;
+        独立 run()(非 launcher)全程判定。
+        """
+        if not self.config.require_all_valid:
+            return
+        if self._launch_mode and not self._committed:
+            return
+        bad = np.flatnonzero(~np.asarray(valid, dtype=bool))
+        if not bad.size:
+            return
+        names = ", ".join(
+            f"{self._devices[i].get('role') or 'unbound'}"
+            f"({self._devices[i].get('serial') or '?'})" for i in bad)
+        t0 = getattr(self, "_loop_t0", None)
+        elapsed = ts - t0 if t0 else 0.0
+        raise RuntimeError(
+            f"tracker pose 无效: {names} — 所有设备必须始终有效"
+            f"(t+{elapsed:.1f}s,有效 {valid.sum()}/{len(valid)})")
 
     def _close(self) -> None:
         if self._vr is not None:

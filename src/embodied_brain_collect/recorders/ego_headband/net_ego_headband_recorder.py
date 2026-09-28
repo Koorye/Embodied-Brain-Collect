@@ -119,6 +119,10 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._topics: dict[str, str] = {}
         self._synced: bool | None = None
         self._ended = False
+        self._ended_reason = ""
+        # 链路静默判定基线:最近一次收到字节(perf_counter)。握手/keep-alive
+        # 期间就有流量,基线一直被喂到录制开始
+        self._last_rx_perf = time.perf_counter()
         self._audio_available = False
         self._decode_queues = {}
         self._decode_threads = {}
@@ -243,8 +247,6 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
     def _drain_loop(self) -> None:
         while not self._drain_stop.is_set() and not self._ended:
             got = self._recv(_POLL_TIMEOUT)
-            if got is None:
-                return                       # stream ended; _end_stream fired
             if got:
                 for _ in range(_DRAIN_MAX):
                     if not self._recv(0.0):
@@ -368,19 +370,24 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._sock.sendall(_HEADER.pack(len(raw), 0) + raw)
 
     def _recv(self, timeout: float):
-        """One recv into ``_rx``.  True=data, False=timeout, None=ended."""
+        """One recv into ``_rx``.  True=data, False=timeout.
+
+        对端断开/连接错误直接抛 RuntimeError —— 录制终止,已收数据随
+        _record 的 finally 落盘,launcher 按异常退出收摊(旧写法走
+        ``_end_stream`` 自停:子进程 0 退出,没有任何报错)。
+        """
         try:
             self._sock.settimeout(timeout)
             chunk = self._sock.recv(65536)
         except (socket.timeout, BlockingIOError):
             return False
         except OSError as exc:
-            self._end_stream(f"{type(exc).__name__}: {exc}")
-            return None
+            raise RuntimeError(
+                f"ego 头环连接错误 — {type(exc).__name__}: {exc}")
         if not chunk:
-            self._end_stream("peer closed connection")
-            return None
+            raise RuntimeError("ego 头环连接已断开(peer closed)")
         self._rx.extend(chunk)
+        self._last_rx_perf = time.perf_counter()
         return True
 
     def _take_frame(self):
@@ -406,9 +413,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
             frame = self._take_frame()
             if frame is not None:
                 return frame
-            r = self._recv(max(0.01, deadline - time.time()))
-            if r is None:
-                raise EOFError("connection ended during handshake")
+            self._recv(max(0.01, deadline - time.time()))
 
     # ---- recording poll -------------------------------------------------
 
@@ -418,11 +423,22 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         # (no-op afterwards).  Also covers the live-visualization harness,
         # which calls _poll directly and never enters _record.
         self._stop_drain()
+        # 流被设备端结束(server error/坏帧,见 _end_stream)→ 抛错终止录制,
+        # 已收数据随 _record 的 finally 落盘;对端断开/连接错误在 _recv 里
+        # 直接抛,到不了这里
         if self._sock is None or self._ended:
-            return
+            raise RuntimeError(
+                f"ego 头环数据流已结束 — {self._ended_reason or '未知原因'}")
+        # 链路静默:断电/断网不发 FIN 的半开 TCP 上 recv 只会一直超时,
+        # 永远不会有显式错误 —— 只有"多久没收到字节"能暴露
+        link_timeout = float(getattr(self.config, "link_timeout", 0.0) or 0.0)
+        if link_timeout > 0:
+            idle = time.perf_counter() - self._last_rx_perf
+            if idle > link_timeout:
+                raise RuntimeError(
+                    f"ego 头环 {idle:.1f}s 没有任何数据(link_timeout="
+                    f"{link_timeout:g}s)— 连接已死,设备可能已断电/断网")
         got = self._recv(_POLL_TIMEOUT)
-        if got is None:
-            return                       # stream ended; stop_event already set
         if got:
             # Drain a burst so a run of large JPEGs cannot outrun the
             # hz-limited loop; bounded so we still return to check stop.
@@ -430,6 +446,9 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 if not self._recv(0.0):
                     break
         self._drain_frames()
+        if self._ended:
+            raise RuntimeError(
+                f"ego 头环数据流已结束 — {self._ended_reason or '未知原因'}")
 
     def _drain_frames(self) -> None:
         while True:
@@ -575,6 +594,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         if self._ended:
             return
         self._ended = True
+        self._ended_reason = reason
         self._log(f"[ego_headband:net] stream ended — {reason}; stopping and "
                   f"saving what was received", level="WARNING")
         self.stop_event.set()          # _loop breaks -> _teardown saves

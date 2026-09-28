@@ -467,17 +467,11 @@ class IntanEegRecorder(BaseEegRecorder):
                 self._on_event(code, latency)
 
     def _poll(self, ts: float) -> None:
+        # 对端断开/读失败让本来的 OSError/ConnectionError 直接抛出 ——
+        # 录制终止,已录数据随 _record 的 finally 落盘(旧写法是关 socket
+        # 停读,录制带着死掉的 EEG 走完全程)
         if self._data_sock is not None:
-            try:
-                self._poll_read()
-            except OSError as exc:
-                self._log(f"[eeg:intan] 波形流断开: {exc} — 停止读取",
-                          level="ERROR")
-                try:
-                    self._data_sock.close()
-                except OSError:
-                    pass
-                self._data_sock = None
+            self._poll_read()
 
     def _heartbeat_stats(self, elapsed: float) -> str:
         extra = super()._heartbeat_stats(elapsed)

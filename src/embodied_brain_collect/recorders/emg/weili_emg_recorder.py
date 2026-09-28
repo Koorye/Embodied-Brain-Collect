@@ -31,6 +31,7 @@ get the frames actually lost.
 """
 
 import struct
+import time
 
 import numpy as np
 
@@ -77,6 +78,7 @@ class WeiliEmgRecorder(BaseEmgRecorder):
         self._last_sn: int | None = None
         self._dropped = 0
         self._raw_buf = bytearray()
+        self._last_rx_perf: float | None = None   # 链路静默判定基线(见 _poll)
 
     # ---- lifecycle ----------------------------------------------------------
 
@@ -119,6 +121,17 @@ class WeiliEmgRecorder(BaseEmgRecorder):
         chunk = self._ser.read(4096)
         if chunk:
             self._raw_buf.extend(chunk)
+            self._last_rx_perf = time.perf_counter()
+        elif self._last_rx_perf is not None:
+            # 臂环断电/USB 松动时 read 只会返回空字节,不会有任何异常 ——
+            # 出过字节后链路静默超过 link_timeout 即判死(首次字节前不武装,
+            # 慢启动交给 launcher 的确认阶段)
+            link_timeout = float(getattr(self.config, "link_timeout", 0.0) or 0.0)
+            idle = time.perf_counter() - self._last_rx_perf
+            if link_timeout > 0 and idle > link_timeout:
+                raise RuntimeError(
+                    f"EMG 臂环 {idle:.1f}s 没有任何数据(link_timeout="
+                    f"{link_timeout:g}s)— 连接已死,设备可能已断开")
 
         frames: list[dict] = []
         while len(self._raw_buf) >= FRAME_LEN:

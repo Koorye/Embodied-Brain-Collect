@@ -560,9 +560,8 @@ class BrainCoEegRecorder(BaseEegRecorder):
         self._drain_packets(max_n=128)
         if self._sdk_error and self._sdk_thread is not None \
                 and not self._sdk_thread.is_alive():
-            self._log(f"[eeg:brainco] SDK 中途退出 — {self._sdk_error}",
-                      level="ERROR")
-            self._sdk_thread = None
+            raise RuntimeError(
+                f"BrainCo SDK 线程中途退出 — {self._sdk_error}")
 
     def _drain_packets(self, max_n: int = 64) -> None:
         if self._pkt_q is None:
