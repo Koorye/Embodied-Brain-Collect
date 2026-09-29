@@ -30,17 +30,21 @@ _SLOT_CATEGORY = (
 )
 
 #: 类别 → 排查方案(顺序即自查流程的展示顺序)。
-#: EEG 一条按 error 行关键词分四支:开录阻抗门禁(curry_eeg_recorder,
-#: 主动触发版)的三类拒绝各有专属动作,其余才走同步盒/NetStream 老三样。
+#: EEG 一条按 error 行关键词分支:开录阻抗门禁(curry/brainco 都是主动
+#: 触发)的各类拒绝各有专属动作,其余才走同步盒/NetStream 老三样。
 SLOT_GUIDES: dict[str, str] = {
     "eeg":        "报'阻抗检查未通过'=电极接触不良:整理电极/补导电膏后重采"
-                  "(M1/P9/PO9/Cb1 等耳后头围边缘位高阻属正常,门禁已豁免);"
+                  "(耳后头围边缘位 M1/P9/PO9/Cb1 等高阻属正常,门禁已豁免;"
+                  "BrainCo 帽豁免 FT9/FT10/TP9/TP10/IO);"
                   "报'未检测到阻抗检测'=放大器没连上或检测被拒:确认蓝色三角"
                   "点亮后重采;"
+                  "报'未收到阻抗数据'或'缺 chip'=BrainCo 帽没进阻抗态/固件"
+                  "不支持多 chip 轮询:确认帽子在线,可在 BCIGo 上位机手动做"
+                  "一次阻抗验证后重采,反复出现先 impedance_check: false;"
                   "报'未恢复采集'=阻抗后放大器没恢复读数:重启 Curry 后重采"
                   "(恢复前不要反复重连,会报 Device Error);"
                   "其余(连接失败/中途断流):拔插同步盒(EEG 同步盒 USB 重插,"
-                  "确认 Curry 端 NetStream 在发)",
+                  "确认 Curry 端 NetStream 在发;BrainCo 帽检查 Wi-Fi/局域网)",
     "emg":        "拔插 USB 适配器,按紧接线(臂环接口容易松)",
     "eye":        "拔插网线;退出并重启手机上的 Neon app(Companion)",
     "hand_pose":  "拔插接收器(dongle),确保手套全蓝常亮(Manus Core 里两只都在线)",

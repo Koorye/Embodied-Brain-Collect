@@ -12,15 +12,29 @@ BrainCo 设备没有 Curry 那种硬件 TTL 事件流。刺激与 EEG 的对齐�
 可选:刺激进程把同一份 UDP 再抄一份到 ``sync_udp_port``。录制中按最近
 一包做线性插值,心跳就能看到事件数;收尾仍以全局包时钟 + markers.npz
 为准(更稳,不受单包抖动支配)。
+
+开录阻抗门禁(``impedance_check``,默认开;参考 CurryEegRecorder 的主动
+触发版):``_open`` 阶段经 SDK ``enable_impedance_detection_mode`` 触发一
+次 leadoff 阻抗检测(SDK 内部对激励波形做正弦拟合算阻抗,并逐 chip 轮询,
+4 chip x 8 通道 = 32 路),``set_imp_data_callback`` 收若干窗口取均值做通
+过率检查,不过则拒绝 open 并提示超标通道;结果与 Curry 同 schema 随 npz
+落盘(``eeg_impedance_*``),打包器透传成 ``observation.eeg_impedance``。
+收尾必发 ``disable_impedance_detection_mode`` —— SDK 自己会重启 EEG 流,
+没有 Curry 那条"恢复前断开打坏驱动"的时序红线,但 ``_open`` 仍等读数恢
+复才返回。回调的官方签名未公开,``coerce_imp_payload`` 对 tuple/dict/
+属性对象做尽力解析;阻抗值单位按 Ω 处理(6nA 激励下的 V/I),实机若证
+实为 kΩ,改 ``IMP_VALUE_TO_OHM`` 一处即可。
 """
 
 from __future__ import annotations
 
 import asyncio
 import queue
+import re
 import socket
 import threading
 import time
+from collections import Counter
 from typing import Any
 
 import numpy as np
@@ -63,6 +77,23 @@ _SIGNAL_ATTR = {
 
 # 手动填写 host 但没写端口时的兜底;mDNS 会覆盖。
 _DEFAULT_TCP_PORT = 8080
+
+# ---- 开录阻抗门禁(参考 CurryEegRecorder 的常量区)----
+# BCIGo 的 32 路电极由 4 个 leadoff 芯片各管 8 路:chip N 覆盖
+# BRAINCO_CHANNEL_NAMES 的 [8N, 8N+8)(顺序映射为实机默认假设,实机
+# 首跑时对照上位机的阻抗表核一遍)。SDK 收到 leadoff 波形后自己做正弦
+# 拟合(pyd 日志 "impedance waveform fit"),算出的阻抗值经
+# set_imp_data_callback 推给 Python —— 每次回调一个 chip 的 8 个值。
+# 单位按 Ω 处理(6nA 激励电流下的 V/I);实机若证实是 kΩ,只改这里。
+IMP_VALUE_TO_OHM = 1.0
+BRAINCO_CH_PER_CHIP = 8
+BRAINCO_N_CHIPS = BRAINCO_N_CHANNELS // BRAINCO_CH_PER_CHIP
+_IMP_FREQ_ATTR = "Ac31p2hz"    # leadoff 激励频率(SDK 默认 31.2Hz AC)
+_IMP_CURRENT_ATTR = "Cur6nA"   # 激励电流(SDK 默认;干电极高阻可试 Cur6uA)
+# 每 chip 收够这么多有效窗口提前收工;到点没收齐按失败算。
+_IMPEDANCE_SNAPSHOTS = 2
+_IMPEDANCE_WINDOW_S = 12.0     # chip 轮询一圈的收集窗口上限
+_IMPEDANCE_CMD_TIMEOUT_S = 10.0  # enable/disable 命令的等待上限
 
 
 # =============================================================================
@@ -163,6 +194,85 @@ def coerce_eeg_payload(payload: Any) -> tuple[np.ndarray, dict]:
         arr = arr.reshape((-1, arr.shape[-1]))
 
     return np.ascontiguousarray(arr, dtype=np.float32), extra
+
+
+def _chip_index(chip: Any) -> int | None:
+    """``LeadOffChip`` 枚举 / int / 字符串 → 0 基 chip 序号(0..3)。
+
+    枚举优先看 ``name``("Chip2" → 1);裸整数按枚举判别值处理(NONE=0,
+    Chip1..Chip4 = 1..4,1 基)。认不出的返回 None。
+    """
+    if isinstance(chip, bool):
+        return None
+    name = getattr(chip, "name", "")
+    if isinstance(name, str):
+        m = re.search(r"(?i)chip\s*(\d+)", name)
+        if m:
+            idx = int(m.group(1)) - 1
+            return idx if 0 <= idx < BRAINCO_N_CHIPS else None
+    v: Any = None
+    if isinstance(chip, int):
+        v = chip
+    else:
+        for attr in ("value", "int_value"):
+            cand = getattr(chip, attr, None)
+            if isinstance(cand, int) and not isinstance(cand, bool):
+                v = cand
+                break
+    if not isinstance(v, int):
+        m = re.search(r"(?i)chip\s*(\d+)", str(chip))
+        if m:
+            idx = int(m.group(1)) - 1
+            return idx if 0 <= idx < BRAINCO_N_CHIPS else None
+        return None
+    if 1 <= v <= BRAINCO_N_CHIPS:
+        return v - 1
+    return None   # 0 = LeadOffChip.NONE 等无效值
+
+
+def coerce_imp_payload(payload: Any) -> tuple[int, np.ndarray] | None:
+    """把 ``set_imp_data_callback`` 的多种形态收成 ``(chip_idx, 8 值)``。
+
+    官方未公开回调签名,对 ``(chip, values)`` tuple / dict / 属性对象做
+    尽力解析;解析不出(或数值不是 8 个)返回 None,调用方记一次 repr
+    便于实机对格式。
+    """
+    chip: Any = None
+    vals: Any = None
+    if isinstance(payload, dict):
+        chip = payload.get("chip", payload.get("chip_id",
+                                               payload.get("lead_off_chip")))
+        for k in ("values", "imp", "impedance", "impedances",
+                  "imp_data", "data"):
+            if payload.get(k) is not None:
+                vals = payload[k]
+                break
+    elif isinstance(payload, (tuple, list)) and payload:
+        if len(payload) == 2:
+            chip, vals = payload
+        elif len(payload) == BRAINCO_CH_PER_CHIP + 1:
+            # (chip, v0..v7) 铺平形态
+            chip, vals = payload[0], payload[1:]
+    elif payload is not None and not isinstance(
+            payload, (np.ndarray, bytes, bytearray)):
+        chip = getattr(payload, "chip", getattr(payload, "chip_id", None))
+        for k in ("values", "imp", "impedance", "impedances",
+                  "imp_data", "data"):
+            v = getattr(payload, k, None)
+            if v is not None:
+                vals = v
+                break
+
+    idx = _chip_index(chip) if chip is not None else None
+    if idx is None or vals is None:
+        return None
+    try:
+        arr = np.asarray(vals, dtype=np.float32).ravel()
+    except (TypeError, ValueError):
+        return None
+    if arr.size != BRAINCO_CH_PER_CHIP:
+        return None
+    return idx, arr
 
 
 def pull_eeg_buffer(sdk: Any) -> Any:
@@ -300,6 +410,18 @@ class BrainCoEegRecorder(BaseEegRecorder):
         self._sync_sock: socket.socket | None = None
         self._n_ch = BRAINCO_N_CHANNELS
         self._dropped = 0
+        # open 时阻抗门禁的结果(进 npz + 决定 open 成败);与 Curry 同 schema
+        self._imp_windows: list[tuple[int, np.ndarray]] = []
+        self._imp_cb_logged = False
+        self._impedance_ohm: np.ndarray | None = None
+        self._impedance_checked: np.ndarray | None = None   # bool per channel
+        self._impedance_pass_rate: float = 0.0
+        self._impedance_pass: bool = False
+        self._impedance_n: int = 0
+        self._impedance_error: str = ""   # 非空 = 门禁拒绝开录的原因文案
+        # 门禁完成信号:_open 据此判断"样本已到"是否发生在门禁结束后
+        # (start_stream 到 enable 阻抗之间会有预热样本,不能只看样本数)
+        self._imp_gate_done = threading.Event()
 
     # ------------------------------------------------------------------
     # SDK thread
@@ -379,6 +501,16 @@ class BrainCoEegRecorder(BaseEegRecorder):
             except Exception as exc:
                 self._log(f"[eeg:brainco] {name}() {exc}", echo=False)
 
+        # 开录阻抗门禁(参考 Curry):enable 阻抗模式会停 EEG 流,disable
+        # 再由 SDK 恢复 —— 门禁结束时 EEG 才真正出数,结果决定 open 成败。
+        if self.config.impedance_check:
+            try:
+                detail = await self._impedance_gate(sdk, client)
+            finally:
+                self._imp_gate_done.set()
+            self._log(f"[eeg:brainco] {detail}",
+                      level="ERROR" if self._impedance_error else "INFO")
+
         # 先给回调一点时间。回调一旦进数就不再抽缓冲,避免同一批被记两遍。
         # 回调若始终不来(上次实机如此),再按整批 take 抽 get_eeg_buffer。
         t_stream = time.time()
@@ -393,6 +525,8 @@ class BrainCoEegRecorder(BaseEegRecorder):
                 sdk.set_eeg_data_callback(None)
             if hasattr(sdk, "set_received_data_callback"):
                 sdk.set_received_data_callback(None)
+            if hasattr(sdk, "set_imp_data_callback"):
+                sdk.set_imp_data_callback(None)
         except Exception:
             pass
         try:
@@ -444,6 +578,172 @@ class BrainCoEegRecorder(BaseEegRecorder):
             self._dropped += 1
 
     # ------------------------------------------------------------------
+    # Impedance gate (open-time, ACTIVE trigger — 参照 CurryEegRecorder)
+    # ------------------------------------------------------------------
+
+    def _on_sdk_imp(self, *args, **kwargs) -> None:
+        """``set_imp_data_callback``:SDK 每完成一个 chip 的阻抗窗口推一次
+        (8 通道值)。从 SDK 线程调;append 在 GIL 下原子,读方只做快照。"""
+        payload = _payload_from_cb(args, kwargs)
+        parsed = coerce_imp_payload(payload)
+        if parsed is None:
+            if not self._imp_cb_logged:
+                self._imp_cb_logged = True
+                self._log(f"[eeg:brainco] imp 回调格式未识别 — "
+                          f"repr={payload!r:.200}", level="WARNING")
+            return
+        chip, vals = parsed
+        if not self._imp_cb_logged:
+            self._imp_cb_logged = True
+            self._log(f"[eeg:brainco] imp 首窗: chip={chip + 1} "
+                      f"kΩ≈{np.round(vals / 1000.0, 1).tolist()}",
+                      echo=False)
+        self._imp_windows.append((chip, vals))
+
+    def _impedance_mean(self) -> tuple[np.ndarray | None, str]:
+        """按 chip 收拢窗口 → 32 通道均值(Ω);无数据/缺 chip 时给文案。"""
+        windows = list(self._imp_windows)
+        if not windows:
+            return None, ("未收到阻抗数据 — 确认帽子固件支持 leadoff 阻抗"
+                          "检测(可在 BCIGo 上位机手动做一次阻抗后重试),"
+                          "或 impedance_check: false 跳过门禁")
+        have = sorted({c for c, _v in windows})
+        missing = [c + 1 for c in range(BRAINCO_N_CHIPS) if c not in have]
+        if missing:
+            return None, (f"阻抗数据不完整:只收到 chip "
+                          f"{[c + 1 for c in have]},缺 chip {missing} — "
+                          "重试一次;反复出现说明固件不支持多 chip 轮询,"
+                          "请 impedance_check: false 跳过门禁并人工核查")
+        sums = np.zeros((BRAINCO_N_CHIPS, BRAINCO_CH_PER_CHIP),
+                        dtype=np.float64)
+        counts = np.zeros(BRAINCO_N_CHIPS, dtype=np.float64)
+        for chip, vals in windows:
+            sums[chip] += vals
+            counts[chip] += 1.0
+        z = (sums / counts[:, None]).reshape(-1) * IMP_VALUE_TO_OHM
+        self._impedance_n = len(windows)
+        return z, ""
+
+    def _evaluate_impedance(self, z: np.ndarray) -> tuple[bool, str]:
+        """与 Curry 同口径:均值 vs 阈值,边缘通道豁免,通过率门槛。
+        顺带把 ``self._impedance_ohm / _checked / _pass_rate / _pass``
+        填好(随 npz 落盘)。"""
+        cfg = self.config
+        thr = cfg.impedance_max_kohm * 1000.0
+        edge = {c.strip().upper() for c in cfg.impedance_edge_channels}
+        labels = [lab.strip() for lab in self._channel_labels]
+        checked = np.asarray([lab.strip().upper() not in edge
+                              and lab.strip().upper() != "TRIG"
+                              for lab in labels])
+        checked_idx = np.flatnonzero(checked)
+        if checked_idx.size == 0:
+            return False, ("阻抗检查配置错误:参与统计的通道数为 0"
+                           "(检查 impedance_edge_channels 是否覆盖了全部通道)")
+        fail_idx = checked_idx[z[checked_idx] >= thr]
+        rate = 1.0 - fail_idx.size / checked_idx.size
+        self._impedance_ohm = z
+        self._impedance_checked = checked
+        self._impedance_pass_rate = float(rate)
+
+        def _fmt(idx: np.ndarray, limit: int = 15) -> str:
+            items = [f"{labels[i]}({z[i] / 1000:.0f}k)" for i in idx]
+            tail = f" …共{len(items)}个" if len(items) > limit else ""
+            return " ".join(items[:limit]) + tail
+
+        need = cfg.impedance_pass_rate
+        if rate < need:
+            self._impedance_pass = False
+            return False, (
+                f"阻抗检查未通过: {fail_idx.size}/{checked_idx.size} 通道 "
+                f"≥ {cfg.impedance_max_kohm:g}kΩ,通过率 {rate:.1%} < "
+                f"{need:.0%}(边缘通道已豁免)— 超标: "
+                f"{_fmt(fail_idx)};请整理/浸湿电极后重试")
+        self._impedance_pass = True
+        detail = (f"impedance ok: {checked_idx.size - fail_idx.size}/"
+                  f"{checked_idx.size} 通道 < {cfg.impedance_max_kohm:g}kΩ "
+                  f"(通过率 {rate:.1%} ≥ {need:.0%})")
+        if fail_idx.size:
+            detail += f";超标(未阻断): {_fmt(fail_idx)}"
+        return True, detail
+
+    async def _impedance_gate(self, sdk: Any, client: Any) -> str:
+        """主动阻抗门禁:enable → 收窗口 → 评估 →(finally)disable。
+
+        disable 一定发 —— SDK 会顺带 start_eeg_stream 恢复读数,绝不把
+        帽子留在阻抗模式;也没有 Curry 那条"恢复前断开打坏驱动"的红线
+        (模式切换全部由 SDK 命令兜底)。评估在 disable 之前完成,
+        ``_impedance_error`` 先于 EEG 恢复就位,``_open`` 的等待循环据此
+        快速失败。返回给操作员看的文案;拒绝开录时同时存进
+        ``self._impedance_error``。"""
+        self._imp_windows = []
+        self._imp_cb_logged = False
+        self._impedance_error = ""
+        registered = False
+        try:
+            if hasattr(sdk, "set_imp_data_callback"):
+                sdk.set_imp_data_callback(self._on_sdk_imp)
+                registered = True
+            if not hasattr(client, "enable_impedance_detection_mode"):
+                raise RuntimeError(
+                    "bcigo-sdk 没有 enable_impedance_detection_mode — "
+                    "SDK 版本过旧,升级 SDK 或 impedance_check: false 跳过门禁")
+            try:
+                maybe = client.enable_impedance_detection_mode(
+                    loop_check=True,
+                    freq=_sdk_enum(sdk, "LeadOffFreq", _IMP_FREQ_ATTR),
+                    current=_sdk_enum(sdk, "LeadOffCurrent",
+                                      _IMP_CURRENT_ATTR),
+                    chip=_sdk_enum(sdk, "LeadOffChip", "Chip1"),
+                )
+            except TypeError:
+                # 旧签名:无参
+                maybe = client.enable_impedance_detection_mode()
+            if asyncio.iscoroutine(maybe):
+                await asyncio.wait_for(maybe,
+                                       timeout=_IMPEDANCE_CMD_TIMEOUT_S)
+            # 窗口由 SDK 线程推;这里只等每 chip 收够(提前收工),
+            # 到点没收齐交给 _impedance_mean 报缺哪块
+            deadline = time.time() + _IMPEDANCE_WINDOW_S
+            while time.time() < deadline:
+                counts = Counter(c for c, _v in self._imp_windows)
+                if (len(counts) >= BRAINCO_N_CHIPS
+                        and min(counts.values()) >= _IMPEDANCE_SNAPSHOTS):
+                    break
+                await asyncio.sleep(0.05)
+            z, reason = self._impedance_mean()
+            if z is None:
+                self._impedance_error = reason
+                return reason
+            ok, detail = self._evaluate_impedance(z)
+            if not ok:
+                self._impedance_error = detail
+            return detail
+        except Exception as exc:
+            self._impedance_error = (f"阻抗检测失败: {type(exc).__name__}: "
+                                     f"{exc}")
+            return self._impedance_error
+        finally:
+            try:
+                maybe = client.disable_impedance_detection_mode()
+                if asyncio.iscoroutine(maybe):
+                    await asyncio.wait_for(maybe,
+                                           timeout=_IMPEDANCE_CMD_TIMEOUT_S)
+            except Exception as exc:
+                # 失败不覆盖主失败文案,但要留痕:帽子可能仍停在阻抗模式
+                self._log(f"[eeg:brainco] disable_impedance 失败: "
+                          f"{type(exc).__name__}: {exc} — 确认上位机能否"
+                          f"恢复 EEG 流,必要时重连帽子", level="WARNING")
+                if not self._impedance_error:
+                    self._impedance_error = (
+                        "阻抗结束命令失败 — 确认 BCIGo 上位机能否恢复 "
+                        "EEG 流,必要时重连帽子")
+            if registered:
+                try:
+                    sdk.set_imp_data_callback(None)
+                except Exception:
+                    pass
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 
@@ -472,9 +772,21 @@ class BrainCoEegRecorder(BaseEegRecorder):
 
         self._open_sync_udp()
 
+        # 开录阻抗门禁:门禁出结论前不算 open 成功 —— start_stream 到
+        # enable 阻抗之间会有预热样本,只看样本数会在门禁评估前放行
+        gate = self._imp_gate_done if self.config.impedance_check else None
+        if gate is not None:
+            gate.clear()
+
         t0 = time.time()
         timeout = float(self.config.open_timeout or 30.0)
-        while self._total_samples == 0:
+        while (self._total_samples == 0
+               or (gate is not None and not gate.is_set())):
+            if self._impedance_error:
+                self._open_error = self._impedance_error
+                self._log(f"[eeg:brainco] open failed — {self._open_error}")
+                self._stop_sdk()
+                return False
             if self._sdk_error:
                 self._open_error = self._sdk_error
                 self._log(f"[eeg:brainco] open failed — {self._open_error}")
@@ -486,15 +798,28 @@ class BrainCoEegRecorder(BaseEegRecorder):
                 self._stop_sdk()
                 return False
             self._drain_packets(max_n=32)
-            if self._total_samples > 0:
+            if self._total_samples > 0 and (gate is None or gate.is_set()):
                 break
             if time.time() - t0 > timeout:
-                self._open_error = (f"no EEG block within {timeout:g}s"
-                                    " — 帽子未开机/未入网/host 填错?")
+                if gate is None or gate.is_set():
+                    self._open_error = (f"no EEG block within {timeout:g}s"
+                                        " — 帽子未开机/未入网/host 填错?")
+                else:
+                    self._open_error = (
+                        f"阻抗检测未在 {timeout:g}s 内完成 — 帽子未开机/"
+                        "未入网/host 填错,或固件不支持阻抗检测")
                 self._log(f"[eeg:brainco] open failed — {self._open_error}")
                 self._stop_sdk()
                 return False
             time.sleep(0.02)
+
+        if self._impedance_error:
+            # 循环顶部的兜底:门禁拒绝但 disable 已恢复 EEG 时,样本会
+            # 先到 —— 有错误文案就不能放行
+            self._open_error = self._impedance_error
+            self._log(f"[eeg:brainco] open failed — {self._open_error}")
+            self._stop_sdk()
+            return False
 
         self._log(f"[eeg:brainco] 已出数: {self._n_ch} ch @ "
                   f"{self._sample_rate:g} Hz")
@@ -780,6 +1105,28 @@ class BrainCoEegRecorder(BaseEegRecorder):
                         "marker_resid_max_ms"):
                 if key in self._fit:
                     out[f"eeg_fit_{key}"] = np.asarray(self._fit[key])
+        if self._impedance_ohm is not None:
+            # 通道顺序/命名与 eeg_channel_names 一致;33 路固件在门禁后才
+            # 确定通道数时,给末位 TRIG 槽位补零并标为不检查(同 Curry)
+            n = len(self._channel_labels)
+            ohm = np.asarray(self._impedance_ohm,
+                             dtype=np.float32).ravel()
+            checked = np.asarray(self._impedance_checked,
+                                 dtype=bool).ravel()
+            if ohm.size < n:
+                ohm = np.concatenate(
+                    [ohm, np.zeros(n - ohm.size, dtype=np.float32)])
+                checked = np.concatenate(
+                    [checked, np.zeros(n - checked.size, dtype=bool)])
+            # 通道顺序/命名与 eeg_channel_names 一致;checked=False 的是
+            # 边缘豁免通道(与 Trigger 状态字槽位)
+            out["eeg_impedance_ohm"] = ohm[:n]
+            out["eeg_impedance_checked"] = checked[:n]
+            out["eeg_impedance_pass_rate"] = np.asarray(
+                self._impedance_pass_rate)
+            out["eeg_impedance_check_pass"] = np.asarray(
+                self._impedance_pass)
+            out["eeg_impedance_n_snapshots"] = np.asarray(self._impedance_n)
         return out
 
 

@@ -37,7 +37,7 @@ class EegRecorderConfig(BaseRecorderConfig):
 
 @dataclass
 class BraincoEegRecorderConfig(BaseRecorderConfig):
-    """BrainCo BCIGo 专用(软件同步,无硬件 TTL/阻抗概念)。"""
+    """BrainCo BCIGo 专用(软件同步;开录阻抗门禁参考 Curry 的同名门禁)。"""
     host: str = "127.0.0.1"      # 设备发现/连接地址(mDNS 扫描的过滤 hint)
     port: int = 13800            # 设备数据端口
     sample_rate: float = 250.0   # 250 / 500 / 1000 / 2000 Hz
@@ -48,6 +48,20 @@ class BraincoEegRecorderConfig(BaseRecorderConfig):
                                  # (在线心跳插值;落盘仍以包时钟拟合为准),
                                  # 与 stim.yaml 的 sync_udp_port 一致
     device_sn: str = ""          # 非空则只连该序列号的帽子
+    # ---- 开录阻抗门禁(BCIGo leadoff 检测;参考 Curry 的主动触发版)----
+    # open 时经 SDK enable_impedance_detection_mode 触发一次 leadoff 阻抗
+    # 检测(SDK 内部逐 chip 轮询,4 chip x 8 通道),回调取均值做通过率检
+    # 查,不达标拒开。结束后必发 disable_impedance_detection_mode —— SDK
+    # 自己会重启 EEG 流,没有 Curry 那条"恢复前断开打坏驱动"的红线,但
+    # open 仍等读数恢复才返回。
+    impedance_check: bool = True   # open 时触发一次阻抗检测并检查;不达标
+                                   # 直接拒开并提示超标通道
+    impedance_max_kohm: float = 100.0  # 单通道通过阈值:阻抗 < 该值算通过
+    impedance_pass_rate: float = 0.87  # 通过率下限;低于则 open 失败并提示
+    impedance_edge_channels: list[str] = field(default_factory=lambda: [
+        # 耳周/乳突/下颌端的天然高阻位,不参与通过率统计
+        "FT9", "FT10", "TP9", "TP10", "IO",
+    ])
 
 
 @dataclass

@@ -60,8 +60,9 @@ recorders:
     open_timeout: 60   # 开录含阻抗检测(取数 + 等恢复读数,最长 ~52s),
                         # 默认 30s 不够
     # BrainCo BCIGo 32 通道帽备选(软件同步,无硬件 TTL):把上面 kind 换成
-    # brainco_eeg 即可 —— BraincoEegRecorderConfig 会忽略 Curry 专属键
-    # (impedance_* 等),host/port/sample_rate 等 BrainCo 键按需覆盖:
+    # brainco_eeg 即可。开录阻抗门禁同样是**自动**的:经 SDK leadoff 检测
+    # 触发一次阻抗(4 chip x 8 通道轮询取均值做通过率检查),不达标拒开,
+    # 阈值/豁免通道与 Curry 相互独立;host/port/sample_rate 等按需覆盖:
     # kind: brainco_eeg
     # sample_rate: 500
     # name: "BrainCo BCIGo"
@@ -71,9 +72,14 @@ recorders:
     # sample_rate: 250      # 250 / 500 / 1000 / 2000
     # gain: 6               # 1, 2, 4, 6, 8, 12, 24
     # signal: normal        # normal / test_signal
+    # open_timeout: 60      # 开录含阻抗检测(收窗最长 ~12s),默认 30s 偏紧
     # scan_timeout_s: 10.0
     # sync_udp_port: 9998   # stim 抄送软件触发(与 stim.yaml sync_udp_port 一致;0=不抄送)
     # device_sn: ""         # 非空则只连该序列号的帽子
+    # impedance_check: true      # 开录阻抗门禁开关(false = 完全绕过,直连直录)
+    # impedance_max_kohm: 100    # 单通道通过阈值:阻抗 < 该值算通过
+    # impedance_pass_rate: 0.87  # 通过率下限;低于则 open 失败并提示
+    # impedance_edge_channels: [FT9, FT10, TP9, TP10, IO]  # 豁免(耳周/乳突/下颌端)
 
   emg_left:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)

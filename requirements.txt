@@ -14,3 +14,4 @@ pyyaml
 # bcigo-sdk>=1.0.2       # BrainCo BCIGo 帽子采集(brainco_eeg)才需要;按官方渠道安装
 mss                     # 辅助员控制台的刺激屏截屏(assist_console)
 pygame
+bcigo_sdk

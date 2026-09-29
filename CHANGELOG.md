@@ -1,5 +1,45 @@
 # 修改记录
 
+## 1.6.0 — 2026-09-29
+
+### BrainCo EEG 开录阻抗门禁(参照 Curry)
+
+* **brainco_eeg_recorder 的 ``_open`` 触发一次 leadoff 阻抗检测**:经
+  bcigo-sdk ``BCIGoClient.enable_impedance_detection_mode``
+  (loop_check=True,31.2Hz AC / 6nA,SDK 内部停 EEG 流 → 多 chip 轮询)
+  进入阻抗模式;``set_imp_data_callback`` 收 SDK 拟合好的每 chip 8 通道
+  阻抗值(4 chip x 8 = 32 路,chip N 顺序映射 BRAINCO_CHANNEL_NAMES
+  的 [8N, 8N+8)),收窗上限 12s、每 chip ≥2 窗提前收工,取均值做通过率
+  检查 —— 口径与 Curry 一致:``impedance_edge_channels``(默认 FT9/
+  FT10/TP9/TP10/IO 耳周/乳突/下颌位)豁免,单通道 < ``impedance_max_kohm``
+  (100kΩ)算过,通过率 < ``impedance_pass_rate``(0.87)拒开并点名超标
+  通道。收窗不足时区分"完全无数据"(固件不支持/没进阻抗态)与"缺某
+  chip"两种文案。
+* **收尾必发 ``disable_impedance_detection_mode``**(finally 路径):
+  SDK 会顺带 start_eeg_stream 恢复读数 —— 与 Curry 不同,模式切换全部
+  由 SDK 命令兜底,没有"恢复前断开打坏驱动"的时序红线;但评估在
+  disable 之前完成,``_open`` 经 ``_imp_gate_done`` 事件等门禁出结论才
+  放行(start_stream 到 enable 阻抗之间的预热样本不再造成提前放行),
+  拒开时 ``_open_error`` 带操作员文案。eeg 槽位 ``open_timeout`` 建议
+  放宽到 60s(收窗最长 ~12s)。
+* **结果与 Curry 同 schema 随 npz 落盘**(``eeg_impedance_ohm`` /
+  ``eeg_impedance_checked`` / ``eeg_impedance_pass_rate`` /
+  ``eeg_impedance_check_pass`` / ``eeg_impedance_n_snapshots``),
+  pack_daily 零改动透传成 ``observation.eeg_impedance``;33 路固件
+  (附 TRIG 列)在门禁后才确定通道数时,落盘前对齐 ``eeg_channel_names``
+  长度并给 TRIG 槽位补零标记不检查。``impedance_check: false`` 完全
+  绕过(不注册回调、不进阻抗模式)。
+* **已知不确定项(实机首跑核对)**:SDK 回调官方签名未公开,
+  ``coerce_imp_payload`` 对 (chip, values) tuple / dict / 属性对象尽力
+  解析,失败时把原始 repr 写进日志;chip 序号枚举名优先("Chip2" → 1),
+  裸整数按 1 基判别值处理;阻抗值单位按 Ω 处理(6nA 激励下的 V/I),
+  实机若证实为 kΩ,改 ``brainco_eeg_recorder.IMP_VALUE_TO_OHM`` 一处。
+* 测试:新增 ``tests/eeg/test_brainco_impedance.py`` 20 例(载荷解析、
+  chip 序号、均值收拢、门禁评估/通过率/豁免、npz 字段对齐、假 SDK 的
+  门禁时序 enable→收窗→评估→disable);troubleshooting 的 EEG 指引补
+  BrainCo 分支;recorders.yaml 模板 brainco 段同步(并纠正"BrainCo
+  无阻抗概念/忽略 impedance_*"的旧注释)。
+
 ## 1.5.0 — 2026-09-23
 
 ### QC 视频解码换 ffmpeg 管道引擎 / 新增 QC 剖析工具

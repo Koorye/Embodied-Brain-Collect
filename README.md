@@ -417,8 +417,8 @@ python scripts/pack_daily.py --max-episodes 2   # 试打包前 2 个会话
   EEG、EMG+IMU、眼动注视+IMU、手部姿态+骨架、每台位置追踪器的位姿
   (按**角色**命名)、marker 事件码,以及 EEG 阻抗门禁结果
   （`observation.eeg_impedance`,单行常量流:每通道均值 Ω + 通过率/门禁结论,
-  开关阻抗门禁或用 BrainCo 的会话自动缺省,不影响打包）——各传感器保持
-  **原生采样率**独立存储
+  Curry / BrainCo 开录门禁自动产出;关门禁的会话自动缺省,不影响打包）
+  ——各传感器保持**原生采样率**独立存储
 * 额外派生两个策略训练特征（58 维,设备位姿 ×3 + 40 手部关节）：
   `observation.state` 与 `action`
 * `info.json` 保持 LeRobot 标准字段（fps/特征表等）——**所有额外信息**
@@ -554,7 +554,7 @@ flowchart LR
 * **时间戳**：统一 rebase 到 RUN_START（无负值,RUN_START 自身 t=0）;
   头环用设备钟映射,EEG 用 marker 拟合对齐到 PC 钟
 * **阻抗单行流**：`observation.eeg_impedance` 是单行常量流(timestamp 固定 0,
-  与时间轴无关),不过窗口、不平移;会话缺它(BrainCo/关门禁)不剔除,
+  与时间轴无关),不过窗口、不平移;会话缺它(关门禁)不剔除,
   episode 内走 dropped 机制跳过该特征
 * 只出现在部分会话的流会整体舍弃（保证 meta 特征集在每个 episode 完整）
 * `--full` 可忽略 marker 窗口保留整段录制
@@ -671,7 +671,7 @@ data/                           # 采集输出与打包结果(git 忽略)
 | 相机 | `frames.mp4` + `<slot>.npz`（`frames_timestamps`,与容器帧 1:1） |
 | ego 头环 | 多路视频 `*.mp4` + `microphone.wav` + 时间戳 npz |
 | 眼动 | `eye.npz`（gaze/imu/scene）+ `eye.mp4` |
-| EEG(Curry) | `eeg.npz`(波形 + 阻抗门禁结果 `eeg_impedance_*`) |
+| EEG(Curry/BrainCo) | `eeg.npz`(波形 + 阻抗门禁结果 `eeg_impedance_*`) |
 | 其余 | `<slot>.npz` + `<slot>.log` |
 
 session 根下另有 `meta.yaml`（版本/任务/图纸/开始时间/各路 recorder 名）、
@@ -761,16 +761,34 @@ python -m tests.eye.test_neon_eye_async       # 硬件 GUI 测试(需显示器)
 
 ## 版本
 
-当前版本 **v1.5.0**,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **v1.6.0**,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
+| **1.6.0** | 2026-09-29 | **BrainCo 开录阻抗门禁**:BCIGo leadoff 检测取均值做通过率检查,不达标拒开;结果与 Curry 同 schema 落盘/打包 |
 | **1.5.0** | 2026-09-23 | **现场加固**:录制故障快速终止 + link_timeout 判死 + tracker 看门狗;QC 解码换 ffmpeg 管道(3 倍提速);配置模板化部署 |
 | 1.4.3 | 2026-09-21 | Curry 阻抗门禁、tracker 台数闸门、窗口边缘缺口检查、麦克风 ALSA 时间戳打包、辅助员控制台 |
 | 1.4.0–1.4.2 | 2026-09-18/20 | video_rate RLHF 视频打分范式、BrainCo EEG、prod 生产线合并(单条打包/头环麦克风/多相机)、头环序列号角色绑定 |
 | 1.3.0 | 2026-09-17 | recorder 工厂下沉、collect_info.jsonl 唯一边车、meta.status 三档、RUN_START/END 硬门槛、台账门控 |
 | 1.2.0 | 2026-09-16 | 图纸模式、生理腕带、每日数据打包 pack_daily |
 | 1.1.0 | 2026-08-24 | EMG 逐帧时间戳重建、QC 网页 |
+
+## v1.6.0 改动概览
+
+1. **BrainCo EEG 开录阻抗门禁**:brainco_eeg_recorder 的 `_open` 经 SDK
+   `enable_impedance_detection_mode` 触发一次 leadoff 阻抗检测(SDK 内部
+   逐 chip 轮询,4 chip x 8 通道 = 32 路,`set_imp_data_callback` 推每
+   chip 8 通道阻抗值),取均值做通过率检查——口径与 Curry 一致:边缘通道
+   (FT9/FT10/TP9/TP10/IO)豁免,单通道 < `impedance_max_kohm` 算过,
+   通过率低于 `impedance_pass_rate` 拒开并点名超标通道。结束后必发
+   `disable_impedance_detection_mode`(SDK 自己重启 EEG 流,没有 Curry
+   那条"恢复前断开打坏驱动"的红线);`_open` 等门禁出结论才放行,
+   建议 `open_timeout: 60`。结果与 Curry 同 schema 写进 npz
+   (`eeg_impedance_*`),打包器零改动透传成 `observation.eeg_impedance`。
+   阈值/豁免通道独立配置(recorders.yaml brainco 段);SDK 回调官方签名
+   未公开,解析失败时把原始 repr 写进日志便于实机对格式;阻抗值单位按
+   Ω 处理(6nA 激励下的 V/I),实机若证实为 kΩ,改
+   `IMP_VALUE_TO_OHM` 一处即可。测试:`tests/eeg/test_brainco_impedance.py`。
 
 ## v1.5.0 改动概览
 
