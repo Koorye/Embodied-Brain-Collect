@@ -108,9 +108,9 @@ _IMP_CURRENT_ATTR = "Cur6nA"   # 激励电流(SDK 默认;干电极高阻可试 C
 # 与上位机有差,读数收敛慢):固件每窗只推若干通道,轮询到"所有通道都
 # 读到"后继续多轮读数,每通道 ≥5 窗且收集 ≥20s 才提前收工,聚合只取每
 # 通道末值(最近一窗);上限 45s,到点没收齐按失败算。
-_IMPEDANCE_SNAPSHOTS = 3        # 首轮全覆盖 + 多轮稳定(对齐上位机节奏)
-_IMPEDANCE_MIN_WINDOW_S = 15.0  # 最短收集时长:给陈值/慢收敛留足刷新时间
-_IMPEDANCE_WINDOW_S = 25.0      # 收集窗口上限
+_IMPEDANCE_SNAPSHOTS = 4        # 首轮全覆盖 + 多轮稳定(对齐上位机节奏)
+_IMPEDANCE_MIN_WINDOW_S = 25.0  # 最短收集时长:给陈值/慢收敛留足刷新时间
+_IMPEDANCE_WINDOW_S = 40.0      # 收集窗口上限
 _IMPEDANCE_CMD_TIMEOUT_S = 10.0  # enable/disable 命令的等待上限
 
 

@@ -10,8 +10,11 @@ class DummyPositionRecorder(BasePositionRecorder):
     config: PositionRecorderConfig
 
     def _open(self) -> bool:
-        self._acc("serials", "dummy-tracker-0")
-        self._acc("device_classes", "tracker")
+        self._static.update({
+            "roles": np.asarray([""], dtype=np.str_),
+            "serials": np.asarray(["dummy-tracker-0"], dtype=np.str_),
+            "device_classes": np.asarray(["tracker"], dtype=np.str_),
+        })
         self._log("[position:dummy] simulated tracker")
         return True
 

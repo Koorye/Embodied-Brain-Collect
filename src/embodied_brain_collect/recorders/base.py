@@ -124,6 +124,10 @@ class BaseRecorder(ABC):
         # 每帧的 perf_counter,与 _buf/_arr_buf 同 key 等长 —— 非时间戳字段
         # 的心跳间隔统计(min/max/mean)由此而来;录制结束即释放
         self._frame_ts: dict[str, list[float]] = {}
+        # 一次性静态字段(设备身份等 open 期确定的常量数组):不进采样缓冲,
+        # 不随 commit 的预热丢弃清空 —— 走 _acc 的话 launcher commit 一到
+        # 就被 _discard_preface 清掉,npz 里从此没有这些字段
+        self._static: dict[str, np.ndarray] = {}
         self._open_error = ""   # specific failure reason when _open() returns False
         self.stop_event = threading.Event()  # launcher sets this to request a
                                              # graceful stop (run-style recorders)
@@ -668,6 +672,7 @@ class BaseRecorder(ABC):
             out[f"{cam}_timestamps"] = (
                 np.array(ts_list, dtype=np.float64)
                 if ts_list else np.zeros(0, dtype=np.float64))
+        out.update(self._static)
         return out
 
     @staticmethod

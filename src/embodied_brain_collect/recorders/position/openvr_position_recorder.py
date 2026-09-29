@@ -259,12 +259,21 @@ class OpenvrPositionRecorder(BasePositionRecorder):
             self._log(f"[position:openvr] open failed — {self._open_error}")
             return False
 
-        for d in self._devices:
-            self._acc("roles", d["role"])
-            self._acc("device_indices", d["index"])
-            self._acc("device_classes", d["device_class"])
-            self._acc("serials", d["serial"])
-            self._acc("models", d["model"])
+        # 设备身份进 _static(一次性常量):launcher commit 的预热丢弃会清空
+        # 采样缓冲 —— 走 _acc 的话 npz 里就再也没有这些字段,打包端无从
+        # 得知列序对应哪台设备
+        self._static.update({
+            "roles": np.asarray([d["role"] for d in self._devices],
+                                dtype=np.str_),
+            "device_indices": np.asarray([d["index"] for d in self._devices],
+                                         dtype=np.int32),
+            "device_classes": np.asarray([d["device_class"] for d in self._devices],
+                                         dtype=np.str_),
+            "serials": np.asarray([d["serial"] for d in self._devices],
+                                  dtype=np.str_),
+            "models": np.asarray([d["model"] for d in self._devices],
+                                 dtype=np.str_),
+        })
 
         self._log(f"[position:openvr] {len(self._devices)} devices — "
                   f"streaming starts with the record loop")

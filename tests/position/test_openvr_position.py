@@ -14,7 +14,8 @@ class TestOpenvrPosition(TestDummyPosition):
         # OpenVR records D devices per frame: stacks are (T, D, 3) / (T, D, 4).
         pos = rec._arr_buf.get("positions_m", [])
         quat = rec._arr_buf.get("quaternions_wxyz", [])
-        classes = rec._buf.get("device_classes", [])
+        classes = list(rec._static.get("device_classes", [])) \
+            or rec._buf.get("device_classes", [])
         ts = rec._buf.get("perf_counter_s", [])
         sl = self._rolling(ts, ts[-1], window=5.0) if len(ts) > 1 else slice(0, 0)
 
