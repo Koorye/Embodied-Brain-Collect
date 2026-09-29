@@ -52,6 +52,7 @@ import numpy as np
 
 from .base_ego_headband_recorder import BaseEgoHeadbandRecorder
 from .ego_headband_recorder_config import EgoHeadbandRecorderConfig
+from .ffmpeg_jpeg_writer import _probe_gpu_transcode
 
 _HEADER = struct.Struct("!II")
 _MAX_META = 65536
@@ -59,6 +60,12 @@ _MAX_PAYLOAD = 32 * 1024 * 1024
 _VERSION = 1
 _POLL_TIMEOUT = 0.2          # idle recv wait during recording (s)
 _DRAIN_MAX = 64              # bounded burst drain per poll
+# 开录/触发瞬间(主进程冷启动 stim、CUDA 初始化)录制进程会短促停顿:
+#   - socket 接收缓冲一满 → TCP 流控 → 设备端开始丢帧(时间戳的洞救不回来)
+#   - ffmpeg/NVENC 冷启动慢 → 解码队列满 → drop-oldest → mp4/时间戳留洞
+# 两级缓冲都按"至少吸掉亚秒级突发"取值,突发过后照常追平。
+_SOCK_RCVBUF = 8 * 1024 * 1024    # 8MB ≈ 本设备满速流(4 cam + 2 imu)~0.6s
+_DECODE_QUEUE_MAX = 64            # 每路相机积压上限,64 帧 ≈ 30fps 下 ~2s
 
 
 # Precise wall clock the device syncs against (matches the reference client):
@@ -153,10 +160,20 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
 
     def _open(self) -> bool:
         cfg = self.config
+        # GPU probe(探测 mjpeg_cuvid->hevc_nvenc 是否可用,进程级缓存)原本
+        # 在第一个 commit 帧进写线程时才跑,四个写线程全部堵在锁上等它 ——
+        # 冷启动停顿叠加写队列溢出,就是 session 开头掉帧的主因之一。提前到
+        # open 的后台线程:与 TCP 连接/握手并行,commit 时只剩 Popen+首轮写入。
+        threading.Thread(target=_probe_gpu_transcode,
+                         name=f"{self.name}-gpu-probe", daemon=True).start()
         try:
             self._sock = socket.create_connection(
                 (cfg.host, cfg.port), timeout=cfg.connect_timeout)
             self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # 大接收缓冲(见 _SOCK_RCVBUF 注释):系统突发导致的收包停顿在
+            # 这里排队而不是触发对端流控丢帧,停顿过后由 poll 循环追平
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
+                                  _SOCK_RCVBUF)
         except OSError as exc:
             self._open_error = (f"cannot connect tcp://{cfg.host}:{cfg.port}"
                                 f" — {type(exc).__name__}: {exc}")
@@ -522,8 +539,10 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         # Buffer each camera's compressed JPEG on its own queue + thread, so
         # the socket loop only ever does a non-blocking handoff: PCM and IMUs
         # keep draining while the writer threads feed ffmpeg (GPU transcode).
+        # 队列深度见 _DECODE_QUEUE_MAX:ffmpeg 冷启动/系统突发期间先积压,
+        # 追上后按原时间戳 1:1 写入,只有持续落后才丢最老的帧
         if i not in self._decode_queues:
-            q = queue.Queue(maxsize=8)
+            q = queue.Queue(maxsize=_DECODE_QUEUE_MAX)
             self._decode_queues[i] = q
             worker = threading.Thread(target=self._decode_camera_loop,
                                       args=(i, q), name=f"headband-cam{i}-decode",

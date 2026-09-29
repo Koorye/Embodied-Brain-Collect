@@ -69,7 +69,7 @@ class EgoHeadbandRecorderConfig(BaseRecorderConfig):
 
     # Microphone capability negotiated with wired_tcp; PCM is stored in WAV.
     audio_enabled: bool = False
-    require_audio: bool = True  # fail open if requested microphone is unavailable
+    require_audio: bool = False  # fail open if requested microphone is unavailable
     audio_topic: str = "/microphone/audio"
 
     def __post_init__(self):

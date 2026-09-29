@@ -54,10 +54,18 @@ class BaseCameraRecorder(BaseRecorder):
 
     # ---- async frame write pipeline (libx265 HEVC) --------------------------
 
+    def _write_queue_size(self) -> int:
+        """Depth of the per-stream write queue (frames held between the poll
+        loop and ffmpeg).  8 keeps RAM tight for raw-frame cameras (a depth
+        frame is tens of MB); anything past it drops the oldest frame by
+        design — the recording must never fall behind real time."""
+        return 8
+
     def _start_write_worker(self, key: str) -> None:
         if key in self._write_threads:
             return
-        q = self._write_queues.setdefault(key, queue.Queue(maxsize=8))
+        q = self._write_queues.setdefault(
+            key, queue.Queue(maxsize=self._write_queue_size()))
         t = threading.Thread(
             target=self._write_worker, args=(key, q),
             name=f"{self.name}-{key}-writer", daemon=True)

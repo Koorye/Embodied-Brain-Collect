@@ -3,7 +3,10 @@
 与 ``test_pack_impedance_pack.py`` 对齐的是输出 schema:门禁结果与 Curry
 同字段落盘(``eeg_impedance_*``),打包器按 ``eeg_channel_names`` 透传。
 回调官方签名未公开,``coerce_imp_payload`` 对 (chip, values) tuple /
-dict / 属性对象做尽力解析,解析约定在这里锁住。
+dict / 属性对象做尽力解析,解析约定在这里锁住。聚合与单位约定也在这里
+锁住:每通道取最近一窗(上位机同款节奏 —— 首轮全覆盖后还要再读约 2 轮
+才稳,首窗可能是陈值),原始值经 ``IMP_VALUE_TO_KOHM`` 换成 kΩ 后才与
+``impedance_max_kohm`` 阈值比较。
 """
 
 from __future__ import annotations
@@ -89,25 +92,49 @@ def test_chip_index_prefers_enum_name_over_value():
     assert coerce_imp_payload((True, [1.0] * 8)) is None
 
 
+def test_coerce_full_cap_window_32_values():
+    """实机固件形态:(chip 号, 32 值整帽窗口,未覆盖通道填 0)。
+
+    回归:旧解析只认 8 值/窗,实机一窗 32 值全被丢,门禁超时报
+    "未收到阻抗数据"。chip 字段解释不了(标志位/序号)时整帽窗口也收。
+    """
+    vals32 = [4_400.0] * 8 + [0.0] * 24
+    chip, vals = coerce_imp_payload((1, vals32))
+    assert chip == 0 and vals.shape == (32,)
+    chip, vals = coerce_imp_payload((FakeChip("Chip2", 2), vals32))
+    assert chip == 1 and vals.shape == (32,)
+    chip, vals = coerce_imp_payload((7, vals32))     # 7 不落在 Chip1..Chip4
+    assert chip is None and vals.shape == (32,)
+
+
 # =============================================================================
 # 窗口收拢 + 门禁评估
 # =============================================================================
 
-def test_impedance_mean_averages_per_chip_block():
+def test_imp_unit_factor_is_kohm():
+    """当前单位决议:SDK 原值即 kΩ(因子 1)。若实机末值对照上位机差
+    1000 倍,改 IMP_VALUE_TO_KOHM 后同步更新本断言。"""
+    assert mod.IMP_VALUE_TO_KOHM == 1.0
+
+
+def test_impedance_last_takes_latest_window_per_channel():
+    """每通道取最近一窗(而非均值):会话早窗可能是固件陈值。"""
     rec = _recorder()
     rec._imp_windows = [
-        (0, _window(0, 1_000.0)), (0, _window(0, 3_000.0)),   # 均值 2k
+        (0, _window(0, 1_000.0)), (0, _window(0, 3_000.0)),   # 末窗 3000
         (1, _window(1, 4_000.0)),
         (2, _window(2, 5_000.0)),
-        (3, _window(3, 7_000.0)), (3, _window(3, 9_000.0)),   # 均值 8k
+        (3, _window(3, 7_000.0)), (3, _window(3, 9_000.0)),   # 末窗 9000
     ]
-    z, reason = rec._impedance_mean()
+    z, raw, reason = rec._impedance_last()
     assert reason == ""
     assert z.shape == (BRAINCO_N_CHANNELS,)
-    assert z[0] == pytest.approx(2_000.0)
-    assert z[8] == pytest.approx(4_000.0)
-    assert z[16] == pytest.approx(5_000.0)
-    assert z[31] == pytest.approx(8_000.0)
+    assert raw[0] == pytest.approx(3_000.0)   # 原值不受单位因子影响
+    assert raw[31] == pytest.approx(9_000.0)
+    assert z[0] == pytest.approx(3_000.0 * mod.IMP_VALUE_TO_KOHM)
+    assert z[8] == pytest.approx(4_000.0 * mod.IMP_VALUE_TO_KOHM)
+    assert z[16] == pytest.approx(5_000.0 * mod.IMP_VALUE_TO_KOHM)
+    assert z[31] == pytest.approx(9_000.0 * mod.IMP_VALUE_TO_KOHM)
     assert rec._impedance_n == 6
 
 
@@ -116,23 +143,47 @@ def test_impedance_mean_missing_chip_fails():
     rec._imp_windows = [(0, _window(0, 1.0)),
                         (1, _window(1, 1.0)),
                         (2, _window(2, 1.0))]
-    z, reason = rec._impedance_mean()
-    assert z is None
-    assert "chip" in reason and "4" in reason
+    z, raw, reason = rec._impedance_last()
+    assert z is None and raw is None
+    # 缺的是 chip4 那一片;映射未核实不点名,只报数量
+    assert "阻抗数据不完整" in reason and "8/32" in reason
+    assert "CP2" not in reason
 
 
-def test_impedance_mean_no_data_fails():
+def test_impedance_last_merges_full_cap_windows():
+    """整帽窗口(实机形态)按通道收拢:每窗只有自己那 8 路非 0,
+    0 视为该窗未报,4 chip 各两窗后 32 路全覆盖;末值取最后一窗。"""
     rec = _recorder()
-    z, reason = rec._impedance_mean()
-    assert z is None
+    windows = []
+    for c in range(BRAINCO_N_CHIPS):
+        for base in (6_000.0, 10_000.0):
+            w = np.zeros(BRAINCO_N_CHANNELS, dtype=np.float32)
+            w[c * 8:(c + 1) * 8] = base
+            windows.append((c, w))
+    rec._imp_windows = windows
+    counts = rec._imp_channel_counts()
+    assert (counts == 2).all()
+    z, raw, reason = rec._impedance_last()
+    assert reason == ""
+    assert z.shape == (BRAINCO_N_CHANNELS,)
+    assert raw[0] == pytest.approx(10_000.0)   # 末窗 10000(非均值 8000)
+    assert z[0] == pytest.approx(10_000.0 * mod.IMP_VALUE_TO_KOHM)
+    assert z[31] == pytest.approx(10_000.0 * mod.IMP_VALUE_TO_KOHM)
+    assert rec._impedance_n == 8
+
+
+def test_impedance_last_no_data_fails():
+    rec = _recorder()
+    z, raw, reason = rec._impedance_last()
+    assert z is None and raw is None
     assert "未收到阻抗数据" in reason
 
 
 def test_evaluate_pass_exempts_edge_channels():
     rec = _recorder()
-    z = np.full(BRAINCO_N_CHANNELS, 8_000.0, dtype=np.float64)
+    z = np.full(BRAINCO_N_CHANNELS, 8.0, dtype=np.float64)   # kΩ
     for name in _EDGE:   # 边缘位给天量阻抗,不应计入通过率
-        z[BRAINCO_CHANNEL_NAMES.index(name)] = 5_000_000.0
+        z[BRAINCO_CHANNEL_NAMES.index(name)] = 5_000.0
     ok, detail = rec._evaluate_impedance(z)
     assert ok and "impedance ok" in detail
     checked = rec._impedance_checked
@@ -143,26 +194,29 @@ def test_evaluate_pass_exempts_edge_channels():
         assert not checked[BRAINCO_CHANNEL_NAMES.index(name)]
 
 
-def test_evaluate_fail_lists_offending_channels():
+def test_evaluate_fail_reports_counts_only():
+    """通道名↔固件槽位映射未核实:文案只报数量,不点名。"""
     rec = _recorder(pass_rate=0.87)
-    z = np.full(BRAINCO_N_CHANNELS, 8_000.0, dtype=np.float64)
+    z = np.full(BRAINCO_N_CHANNELS, 8.0, dtype=np.float64)   # kΩ
     for name in ("C3", "Cz", "Pz", "O1", "O2", "FP1", "FP2",
                  "F3", "F4", "Fz"):                        # 10/27 超标
-        z[BRAINCO_CHANNEL_NAMES.index(name)] = 200_000.0
+        z[BRAINCO_CHANNEL_NAMES.index(name)] = 200.0
     ok, detail = rec._evaluate_impedance(z)
     assert not ok
-    assert "阻抗检查未通过" in detail and "C3(200k)" in detail
+    assert "阻抗检查未通过" in detail and "10/27" in detail
+    assert "C3(" not in detail
     assert rec._impedance_pass is False
     assert rec._impedance_pass_rate == pytest.approx(17.0 / 27.0)
 
 
 def test_evaluate_over_threshold_but_rate_passes():
-    """少量超标不阻断(通过率 ≥ 门槛),但文案里要点名。"""
+    """少量超标不阻断(通过率 ≥ 门槛);文案只报通过数,不点名。"""
     rec = _recorder()
-    z = np.full(BRAINCO_N_CHANNELS, 8_000.0, dtype=np.float64)
-    z[BRAINCO_CHANNEL_NAMES.index("C3")] = 150_000.0
+    z = np.full(BRAINCO_N_CHANNELS, 8.0, dtype=np.float64)   # kΩ
+    z[BRAINCO_CHANNEL_NAMES.index("C3")] = 150.0
     ok, detail = rec._evaluate_impedance(z)
-    assert ok and "超标(未阻断)" in detail and "C3(150k)" in detail
+    assert ok and "impedance ok" in detail and "26/27" in detail
+    assert "C3(" not in detail
     assert rec._impedance_pass is True
 
 
@@ -181,12 +235,12 @@ def test_on_sdk_imp_collects_windows():
 
 def test_build_output_emits_impedance_fields():
     rec = _recorder()
-    z = np.full(BRAINCO_N_CHANNELS, 8_000.0, dtype=np.float64)
+    z = np.full(BRAINCO_N_CHANNELS, 8.0, dtype=np.float64)   # kΩ
     ok, _ = rec._evaluate_impedance(z)
     assert ok
     rec._impedance_n = 3
     out = rec._build_output()
-    assert out["eeg_impedance_ohm"].shape == (BRAINCO_N_CHANNELS,)
+    assert out["eeg_impedance_kohm"].shape == (BRAINCO_N_CHANNELS,)
     assert out["eeg_impedance_checked"].dtype == np.bool_
     assert float(out["eeg_impedance_pass_rate"]) == pytest.approx(1.0)
     assert bool(out["eeg_impedance_check_pass"]) is True
@@ -196,14 +250,14 @@ def test_build_output_emits_impedance_fields():
 def test_build_output_pads_trigger_slot_for_33ch_firmware():
     """33 路固件在门禁后才确定通道数:TRIG 槽位补零且 checked=False。"""
     rec = _recorder()
-    z = np.full(BRAINCO_N_CHANNELS, 8_000.0, dtype=np.float64)
+    z = np.full(BRAINCO_N_CHANNELS, 8.0, dtype=np.float64)   # kΩ
     rec._evaluate_impedance(z)
     rec._channel_labels = BRAINCO_CHANNEL_NAMES + ["TRIG"]
     out = rec._build_output()
-    assert out["eeg_impedance_ohm"].shape == (BRAINCO_N_CHANNELS + 1,)
+    assert out["eeg_impedance_kohm"].shape == (BRAINCO_N_CHANNELS + 1,)
     checked = out["eeg_impedance_checked"]
     assert not bool(checked[-1])
-    assert out["eeg_impedance_ohm"][-1] == 0
+    assert out["eeg_impedance_kohm"][-1] == 0
 
 
 def test_build_output_without_gate_has_no_fields():
@@ -224,6 +278,7 @@ class _FakeSdk:
 
     class LeadOffCurrent:
         Cur6nA = "Cur6nA"
+        Cur6uA = "Cur6uA"
 
     class LeadOffChip:
         Chip1 = "Chip1"
@@ -263,14 +318,20 @@ class _FakeClient:
 
 
 def test_gate_happy_path_passes_and_disables(monkeypatch):
+    monkeypatch.setattr(mod, "_IMPEDANCE_MIN_WINDOW_S", 0.05)
     monkeypatch.setattr(mod, "_IMPEDANCE_WINDOW_S", 0.2)
     rec = _recorder()
-    windows = [(c, _window(c, 8_000.0))
+    windows = [(c, _window(c, 8.0))     # 8 kΩ(SDK 原值)< 默认 100k 阈值
                for c in range(BRAINCO_N_CHIPS) for _ in range(2)]
     client = _FakeClient(rec, windows)
     detail = asyncio.run(rec._impedance_gate(_FakeSdk(), client))
     assert client.enabled and client.disabled
     assert client.enable_kwargs["loop_check"] is True
+    assert client.enable_kwargs["freq"] == "Ac31p2hz"
+    assert client.enable_kwargs["current"] == "Cur6nA"
+    # 实装 SDK 签名没有 chip 参数:多传会 TypeError 落进无参兜底,
+    # loop_check 变 False 只 sweep chip1(实机踩过的坑),这里锁死
+    assert "chip" not in client.enable_kwargs
     assert _FakeSdk.registered is None          # 收尾注销回调
     assert "impedance ok" in detail
     assert rec._impedance_pass is True
@@ -278,10 +339,26 @@ def test_gate_happy_path_passes_and_disables(monkeypatch):
     assert rec._impedance_n == len(windows)
 
 
-def test_gate_reject_sets_error_and_still_disables(monkeypatch):
+def test_gate_uses_configured_excitation(monkeypatch):
+    """激励参数走 config:读数与上位机对不上时可在 recorders.yaml 换
+    (如 Cur6uA)做对照实验。"""
+    monkeypatch.setattr(mod, "_IMPEDANCE_MIN_WINDOW_S", 0.05)
     monkeypatch.setattr(mod, "_IMPEDANCE_WINDOW_S", 0.2)
     rec = _recorder()
-    windows = [(c, _window(c, 500_000.0)) for c in range(BRAINCO_N_CHIPS)]
+    rec.config.impedance_current = "Cur6uA"
+    client = _FakeClient(rec, [])
+    asyncio.run(rec._impedance_gate(_FakeSdk(), client))
+    assert client.enabled
+    assert client.enable_kwargs["current"] == "Cur6uA"
+    assert client.enable_kwargs["freq"] == "Ac31p2hz"
+
+
+def test_gate_reject_sets_error_and_still_disables(monkeypatch):
+    monkeypatch.setattr(mod, "_IMPEDANCE_MIN_WINDOW_S", 0.05)
+    monkeypatch.setattr(mod, "_IMPEDANCE_WINDOW_S", 0.2)
+    rec = _recorder()
+    windows = [(c, _window(c, 500.0))   # 500 kΩ(SDK 原值)≥ 100k 阈值
+               for c in range(BRAINCO_N_CHIPS)]
     client = _FakeClient(rec, windows)
     detail = asyncio.run(rec._impedance_gate(_FakeSdk(), client))
     assert client.disabled
@@ -291,6 +368,7 @@ def test_gate_reject_sets_error_and_still_disables(monkeypatch):
 
 
 def test_gate_enable_failure_still_disables(monkeypatch):
+    monkeypatch.setattr(mod, "_IMPEDANCE_MIN_WINDOW_S", 0.05)
     monkeypatch.setattr(mod, "_IMPEDANCE_WINDOW_S", 0.2)
     rec = _recorder()
     client = _FakeClient(rec, [], enable_raises=RuntimeError("rejected"))
@@ -301,6 +379,7 @@ def test_gate_enable_failure_still_disables(monkeypatch):
 
 
 def test_gate_partial_windows_fail_with_chip_hint(monkeypatch):
+    monkeypatch.setattr(mod, "_IMPEDANCE_MIN_WINDOW_S", 0.05)
     monkeypatch.setattr(mod, "_IMPEDANCE_WINDOW_S", 0.2)
     rec = _recorder()
     windows = [(0, _window(0, 8_000.0)), (1, _window(1, 8_000.0))]
@@ -320,6 +399,8 @@ def test_config_defaults_and_from_dict():
     assert cfg.impedance_max_kohm == 100.0
     assert cfg.impedance_pass_rate == pytest.approx(0.87)
     assert cfg.impedance_edge_channels == _EDGE
+    assert cfg.impedance_freq == "Ac31p2hz"
+    assert cfg.impedance_current == "Cur6nA"
     cfg2 = BraincoEegRecorderConfig.from_dict(
         {"impedance_check": False, "host": "192.168.1.50",
          "nonexistent_key": 1})

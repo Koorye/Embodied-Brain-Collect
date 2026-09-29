@@ -50,10 +50,10 @@ class BraincoEegRecorderConfig(BaseRecorderConfig):
     device_sn: str = ""          # 非空则只连该序列号的帽子
     # ---- 开录阻抗门禁(BCIGo leadoff 检测;参考 Curry 的主动触发版)----
     # open 时经 SDK enable_impedance_detection_mode 触发一次 leadoff 阻抗
-    # 检测(SDK 内部逐 chip 轮询,4 chip x 8 通道),回调取均值做通过率检
-    # 查,不达标拒开。结束后必发 disable_impedance_detection_mode —— SDK
-    # 自己会重启 EEG 流,没有 Curry 那条"恢复前断开打坏驱动"的红线,但
-    # open 仍等读数恢复才返回。
+    # 检测(SDK 内部逐 chip 轮询,4 chip x 8 通道),收满若干窗后每通道取
+    # 末值做通过率检查,不达标拒开。结束后必发 disable_impedance_
+    # detection_mode —— SDK 自己会重启 EEG 流,没有 Curry 那条"恢复前断
+    # 开打坏驱动"的红线,但 open 仍等读数恢复才返回。
     impedance_check: bool = True   # open 时触发一次阻抗检测并检查;不达标
                                    # 直接拒开并提示超标通道
     impedance_max_kohm: float = 100.0  # 单通道通过阈值:阻抗 < 该值算通过
@@ -62,6 +62,11 @@ class BraincoEegRecorderConfig(BaseRecorderConfig):
         # 耳周/乳突/下颌端的天然高阻位,不参与通过率统计
         "FT9", "FT10", "TP9", "TP10", "IO",
     ])
+    # leadoff 激励参数(LeadOffFreq/LeadOffCurrent 枚举的属性名)。BCIGo
+    # 上位机的激励配置未知,而读数与它对不上时先换这里试(如 Cur6uA 大
+    # 电流驱动,干电极信噪比更好);SDK 枚举缺该属性时报阻抗检测失败。
+    impedance_freq: str = "Ac31p2hz"
+    impedance_current: str = "Cur6nA"
 
 
 @dataclass

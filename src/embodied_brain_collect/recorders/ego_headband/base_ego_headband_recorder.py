@@ -84,6 +84,17 @@ class BaseEgoHeadbandRecorder(BaseCameraRecorder):
         # cfg.fps / cfg.cam_fps_hint, which this config names cam_fps.
         return float(getattr(self.config, "cam_fps", 0.0) or 30.0)
 
+    def _write_queue_size(self) -> int:
+        # JPEG 帧(~0.2-0.4MB/帧)缓冲便宜,而 commit 瞬间恰是写管线最脆弱的
+        # 时刻:四个 GPU transcode 进程冷启动(CUDA/nvenc 初始化),同时 stim
+        # 抢同一块 GPU —— 实测 0.2-0.4s 的写停顿,共享的 8 帧队列(30fps 下
+        # 仅 0.27s)必然溢出,每个 session 开头丢 6-18 帧/相机(npz 时间戳
+        # 在 0s 与 ~1s 处各留一个洞,即 TimestampGap 报的"开头掉帧")。
+        # 64 帧(30fps 下 ~2.1s)足够吸掉整个冷启动突发;写线程随后以
+        # ~113fps/流 排空积压,~1s 内追平,不改变"落后即丢最老帧"的兜底。
+        # 与接收侧的解码队列深度(_DECODE_QUEUE_MAX=64)同量级。
+        return 64
+
     def _make_writer(self, path, fps, data):
         # Motion-JPEG frames (the net headband's cameras) go through the GPU
         # transcode writer: ffmpeg decodes (mjpeg_cuvid) + encodes (hevc_nvenc)
