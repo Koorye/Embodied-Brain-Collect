@@ -18,4 +18,4 @@ Run:
     python -m embodied_brain_collect.session.launcher --session-dir <dir>
 """
 
-__version__ = "1.6.0"
+__version__ = "1.5.1"

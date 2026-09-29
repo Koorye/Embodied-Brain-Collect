@@ -761,11 +761,11 @@ python -m tests.eye.test_neon_eye_async       # 硬件 GUI 测试(需显示器)
 
 ## 版本
 
-当前版本 **v1.6.0**,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
+当前版本 **v1.5.1**,完整历史见 [CHANGELOG.md](CHANGELOG.md)。
 
 | 版本 | 日期 | 主题 |
 |---|---|---|
-| **1.6.0** | 2026-09-29 | **BrainCo 开录阻抗门禁**:BCIGo leadoff 检测取均值做通过率检查,不达标拒开;结果与 Curry 同 schema 落盘/打包 |
+| **1.5.1** | 2026-09-29 | **BrainCo 开录阻抗门禁**:BCIGo leadoff 检测取均值做通过率检查,不达标拒开;结果与 Curry 同 schema 落盘/打包 |
 | **1.5.0** | 2026-09-23 | **现场加固**:录制故障快速终止 + link_timeout 判死 + tracker 看门狗;QC 解码换 ffmpeg 管道(3 倍提速);配置模板化部署 |
 | 1.4.3 | 2026-09-21 | Curry 阻抗门禁、tracker 台数闸门、窗口边缘缺口检查、麦克风 ALSA 时间戳打包、辅助员控制台 |
 | 1.4.0–1.4.2 | 2026-09-18/20 | video_rate RLHF 视频打分范式、BrainCo EEG、prod 生产线合并(单条打包/头环麦克风/多相机)、头环序列号角色绑定 |
@@ -773,7 +773,7 @@ python -m tests.eye.test_neon_eye_async       # 硬件 GUI 测试(需显示器)
 | 1.2.0 | 2026-09-16 | 图纸模式、生理腕带、每日数据打包 pack_daily |
 | 1.1.0 | 2026-08-24 | EMG 逐帧时间戳重建、QC 网页 |
 
-## v1.6.0 改动概览
+## v1.5.1 改动概览
 
 1. **BrainCo EEG 开录阻抗门禁**:brainco_eeg_recorder 的 `_open` 经 SDK
    `enable_impedance_detection_mode` 触发一次 leadoff 阻抗检测(SDK 内部
