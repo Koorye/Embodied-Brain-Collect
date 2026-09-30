@@ -24,9 +24,12 @@ RUN_START/RUN_END 窗口拒绝对齐(--full 显式全量除外),视频容器帧�
 1. 预扫走 ``load_stream_index`` 只读时间戳与列名(原版预扫要整段解压全部
    npz,写帧时再解压一遍 —— 每条流被完整解压两次);索引异常自动回退整段
    装载,语义不变。特征规格直接从预扫缓存的 stream_meta 构建,又省一次。
-2. 视频截段(ffmpeg 重编码 + 首帧自验 + 时间戳 parquet)在预扫后立刻
-   全部提交独立进程池,与主进程的 npz 装载、add_frame 写帧完全重叠。
+2. 视频截段(智能截段:整 GOP 流拷贝 + 头部边角重编码,见 pack_daily.
+   _smart_cut;首帧自验 + 时间戳 parquet)在预扫后立刻全部提交独立进程池,
+   与主进程的 npz 装载、add_frame 写帧完全重叠。
 3. 去掉逐样本 tqdm(每样本开销可观),改为每个流写完打印样本数。
+4. save_episode 特征级并行(--save-threads,默认 8;1=串行):每个特征
+   写各自的 parquet/wav + stats,线程池重叠执行。
 
 mf_lerobot 的 add_frame 逐样本 API 决定写帧循环仍在主进程串行。
 launcher 侧的 --pack-episode(run_session / launcher)在每条录完保留后
@@ -41,8 +44,10 @@ import io
 import re
 import shutil
 import sys
+import threading
+import time
 import types
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import NamedTuple
 
@@ -66,6 +71,14 @@ from pack_daily_fast import (  # noqa: E402
 )
 
 _SESSION_NAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{2}-\d{2}-\d{2})$")
+
+# mf_lerobot 的落盘路径契约镜像:视频截段要在 mf_lerobot/torch 导入完成
+# 之前提交(冷启动 ~10s 被截段完全覆盖),路径格式只能先本地复刻;
+# 导入完成后与模块常量核对,上游演进漂移时立刻暴露而不是写错位置
+_VIDEO_PATH_FMT = ("videos/chunk-{episode_chunk:03d}/{video_key}/"
+                   "episode_{episode_index:06d}.mp4")
+_DATA_PATH_FMT = ("data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}/"
+                  "{feature_key}.parquet")
 
 
 class _VideoResult(NamedTuple):
@@ -157,10 +170,14 @@ def _write_episode(ds, session_dir: Path, task_label: str,
 
     master_abs 是独立 30Hz 时间轴(make_master_timeline),窗口模式下
     master_abs[0] 恰为 RUN_START,`ts >= t0` 不会切掉起始事件。
+
+    每个流的样本数在写入前打印(数量已知)——写帧循环是主进程里最长的
+    串行段,不能等写完才出日志。
     """
     t0 = float(master_abs[0])
     master_rel = (master_abs - t0).astype(np.float64)
 
+    print(f"  task: {len(master_rel)} frames", flush=True)
     for t in master_rel:
         ds.add_frame("task", task_label, float(t))
 
@@ -177,10 +194,10 @@ def _write_episode(ds, session_dir: Path, task_label: str,
             if not len(ts_w):
                 continue
             rel = (ts_w - t0).astype(np.float64)
+        print(f"  {key}: {len(rel)} samples", flush=True)
         for t, v in zip(rel, vals_w):
             ds.add_frame(key, v, float(t))
         present.add(key)
-        print(f"  {key}: {len(rel)} samples")
 
     for slot, res in video_results.items():
         if not res.n:
@@ -199,14 +216,15 @@ def _write_episode(ds, session_dir: Path, task_label: str,
             mask = _window_mask(mic["start"], win) & (mic["start"] >= t0)
             sel = np.where(mask)[0]
             if len(sel):
+                print(f"  {MICROPHONE_KEY}: {len(sel)} 块 @{mic['rate']}Hz "
+                      f"{mic['channels']}ch", flush=True)
                 for i in sel:
                     ds.add_frame(MICROPHONE_KEY, chunks[i],
                                  float(mic["start"][i] - t0))
                 present.add(MICROPHONE_KEY)
-                print(f"  {MICROPHONE_KEY}: {len(sel)} 块 @{mic['rate']}Hz "
-                      f"{mic['channels']}ch")
 
     dropped = {k: ds._features.pop(k) for k in list(ds._features) if k not in present}
+    print("[pack] save_episode:写 parquet + 统计 + 一致性校验…", flush=True)
     ds.save_episode()
     for k, f in dropped.items():
         f.next_episode()
@@ -247,15 +265,46 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
                     help="保留中间 PNG 帧(默认编码后删除)")
     ap.add_argument("--workers", type=int, default=None,
                     help="视频截段进程池大小(默认 min(4, 核数-1))")
+    ap.add_argument("--save-threads", type=int, default=8,
+                    help="save_episode 特征级并行线程数(默认 8;1=串行;"
+                         "与 --workers 的视频截段进程池无关)")
     args = ap.parse_args(argv)
     if args.workers is not None and args.workers < 1:
         print("[error] --workers 需要一个正整数")
+        return 1
+    if args.save_threads < 1:
+        print("[error] --save-threads 需要一个正整数")
         return 1
 
     sd = args.session_dir.resolve()
     if not sd.is_dir():
         print(f"[error] 会话目录不存在: {sd}")
         return 1
+
+    t_start = time.perf_counter()
+
+    def _phase(msg: str) -> None:
+        print(f"[+{time.perf_counter() - t_start:6.1f}s] {msg}", flush=True)
+
+    # ---- mf_lerobot/torch 预加载(后台线程,冷启动 ~10s):与预扫、视频 ----
+    # 截段(独立进程池)、npz 装载完全重叠;join 推迟到创建数据集之前
+    _mf: dict[str, object] = {}
+
+    def _preload_mf() -> None:
+        try:
+            from mf_lerobot import MultiFrequencyLeRobotDataset
+            from mf_lerobot import utils as mf_utils
+            _mf["dataset"] = MultiFrequencyLeRobotDataset
+            _mf["utils"] = mf_utils
+        except BaseException as exc:          # join 处统一抛出
+            _mf["error"] = exc
+
+    if "mf_lerobot" not in sys.modules:    # 已被预热/上一条加载过则免提示
+        print("[pack] 后台预加载 mf_lerobot/torch(与预扫/截段/装载重叠)…",
+              flush=True)
+    preload = threading.Thread(target=_preload_mf, daemon=True,
+                               name="mf-preload")
+    preload.start()
 
     # ---- 与 pack_daily 同一门槛:QC / meta status 不过的会话不打包 ----
     # (采集侧进程内调用已由 run_queue 的触发条件把关,信息源相同,不重判)
@@ -319,63 +368,113 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
             return 1
         shutil.rmtree(out)
 
-    if "mf_lerobot" not in sys.modules:    # 已被预热/上一条加载过则免提示
-        print("[pack] 加载打包依赖(mf_lerobot / torch,冷启动约 10s)…",
-              flush=True)
-    from mf_lerobot import MultiFrequencyLeRobotDataset
-    from mf_lerobot.utils import DEFAULT_DATA_PATH, DEFAULT_VIDEO_PATH
-    ds = MultiFrequencyLeRobotDataset.create(
-        repo_id=repo_id, fps=MASTER_FPS,
-        features=specs, root=out, use_videos=True,
-    )
+    # 视频截段的落盘暂存区:数据集 create() 要求输出目录在创建时不存在,
+    # 而截段 worker 会先写进 out —— 先写 <out>.cutting,创建完成后整体
+    # 搬入(同卷 rename,瞬时)。残留的旧暂存区在这里一并清掉
+    scratch = out.parent / f"{out.name}.cutting"
+    if scratch.exists():
+        shutil.rmtree(scratch)
 
     from embodied_brain_collect.session import environment as env_mod
     from pack_daily import video_feature_key
-    ep_idx = ds.meta.total_episodes
     t0 = float(info["master"][0])
     video_keys = [k for k, ft in specs.items() if ft.get("dtype") == "video"]
 
     # ---- 视频截段全部提前提交:独立进程池,与 npz 装载、写帧循环重叠 ----
+    # 提交先于 mf_lerobot 就绪:输出目录全新,episode 恒为 0,路径用镜像
+    # 常量(导入后核对),torch 冷启动被截段完全覆盖。
     # (ego_headband 一槽多路:每个 <name> 是独立 entry/特征,逐 entry 提交)
     jobs = [(slot, npz_name, ts_key, mp4_name, suffix)
             for slot, entries in video_slots.items()
             for npz_name, ts_key, mp4_name, suffix in entries]
+    # 长作业优先(按源 mp4 大小降序):4 路 headband 立刻占满进程池,小
+    # 相机随后补位 —— 尾延迟由最大的流决定,不被小流挤到错峰启动
+    def _job_size(j: tuple) -> int:
+        try:
+            return (sd / j[0] / j[3]).stat().st_size
+        except OSError:
+            return 0
+    jobs.sort(key=_job_size, reverse=True)
     workers = args.workers or _default_workers()
+    ep_idx = 0        # 全新数据集;创建后与 ds.meta.total_episodes 核对
+    _phase(f"提交 {len(jobs)} 路视频截段(workers={min(workers, max(1, len(jobs)))},"
+           "与装载/依赖导入重叠执行)")
     with ProcessPoolExecutor(max_workers=min(workers, max(1, len(jobs)))) as pool:
         futs: dict[str, object] = {}
         for slot, npz_name, ts_key, mp4_name, suffix in jobs:
             key = video_feature_key(suffix)
             futs[suffix] = pool.submit(
                 _cut_video_job, str(sd / slot), npz_name, ts_key, mp4_name,
-                str(ds.root / DEFAULT_VIDEO_PATH.format(
+                str(scratch / _VIDEO_PATH_FMT.format(
                     episode_chunk=ep_idx // 1000, video_key=key,
                     episode_index=ep_idx)),
-                str(out / DEFAULT_DATA_PATH.format(
+                str(scratch / _DATA_PATH_FMT.format(
                     episode_chunk=ep_idx // 1000, episode_index=ep_idx,
                     feature_key=key)),
                 ep_idx, tuple(info["win"]), t0, key, int(MASTER_FPS))
         try:
             task_label = load_task_label(sd, env_mod)
+            _phase("装载 npz 数据流(整段解压)…")
             streams = [s for s in load_parquet_streams(sd)
                        if s[0] in info["present"]]
+
+            # ---- 预加载收口:路径契约核对 + 创建数据集 ----
+            preload.join()
+            if "error" in _mf:
+                raise _mf["error"]
+            if (_mf["utils"].DEFAULT_VIDEO_PATH != _VIDEO_PATH_FMT
+                    or _mf["utils"].DEFAULT_DATA_PATH != _DATA_PATH_FMT):
+                raise RuntimeError("mf_lerobot 路径契约变化 — 请同步更新 "
+                                   "pack_episode 的镜像常量")
+            _phase("mf_lerobot 就绪,创建数据集…")
+            ds = _mf["dataset"].create(
+                repo_id=repo_id, fps=MASTER_FPS,
+                features=specs, root=out, use_videos=True,
+                save_threads=args.save_threads)
+            if ds.meta.total_episodes != ep_idx:
+                raise RuntimeError(
+                    f"新数据集 episode 应为 {ep_idx},实际 "
+                    f"{ds.meta.total_episodes} — 视频已按 {ep_idx} 提交,中止")
+            # 逐路即时回报完成情况(等待期间不再静默),日志按各 worker
+            # 捕获顺序回放,结果按 suffix 归位
+            by_fut = {f: suffix for suffix, f in futs.items()}
             video_results: dict[str, _VideoResult] = {}
-            for _slot, *_rest, suffix in jobs:
-                res: _VideoResult = futs[suffix].result()
-                video_results[suffix] = res
+            for fut in as_completed(by_fut):
+                res: _VideoResult = fut.result()
+                video_results[by_fut[fut]] = res
                 if res.log:
                     sys.stdout.write(res.log)
+                    sys.stdout.flush()
+                _phase(f"视频截段完成: {res.key}({res.n} 帧)")
+            # 暂存区产物搬入最终位置(mp4 + 时间戳 parquet,逐路两文件)
+            for suffix, res in video_results.items():
+                if not res.n:
+                    continue
+                key = video_feature_key(suffix)
+                for fmt in (_VIDEO_PATH_FMT, _DATA_PATH_FMT):
+                    rel = fmt.format(episode_chunk=ep_idx // 1000,
+                                     video_key=key, episode_index=ep_idx,
+                                     feature_key=key)
+                    src, dst = scratch / rel, out / rel
+                    if src.exists():
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        src.replace(dst)
+            shutil.rmtree(scratch, ignore_errors=True)
+            _phase("视频全部就绪,写帧…")
             _write_episode(ds, sd, task_label, info["master"], streams,
                            info["win"], video_results)
         finally:
             for f in futs.values():
                 f.cancel()
+            shutil.rmtree(scratch, ignore_errors=True)
     if not args.keep_images:
         _cleanup_images(out, ep_idx, video_keys)
 
     write_qc_meta(out, [info])
     write_collect_meta(out, [info])
 
-    print(f"[done] 1 episode, {ds.meta.total_frames} frames → {out}")
+    print(f"[done] 1 episode, {ds.meta.total_frames} frames → {out} "
+          f"(用时 {time.perf_counter() - t_start:.1f}s)")
     return 0
 
 

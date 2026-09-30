@@ -82,7 +82,14 @@ def qc_session(session_dir: Path | str,
     ``checker_cfg`` carries ``configs/checker.yaml`` threshold overrides
     (``{check_class_lower: {param: value}}``); anything missing keeps the
     check's own default.
+
+    各模态目录的检查并发执行(线程池,默认 4):检查的重头是 ffmpeg
+    解码子进程,Python 侧只是读管道,线程即可重叠;各 checker 只读
+    自己的目录,互不共享状态。报告结构、发现条目与逐目录串行一致
+    (``streams`` 按目录序收集)。
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     checker_cfg = checker_cfg or {}
     root = Path(session_dir)
     window = find_run_window(root)
@@ -97,6 +104,7 @@ def qc_session(session_dir: Path | str,
             "数据不可用", check="RunWindow"))
         return report
 
+    entries: list[tuple[Path, type[BaseChecker]]] = []
     for d in sorted(x for x in root.iterdir() if x.is_dir()):
         if not _has_data(d):
             # A recorder that opened but never saved leaves its log behind.
@@ -115,8 +123,17 @@ def qc_session(session_dir: Path | str,
                 findings=[Finding("INFO", "未知模态 — 已跳过",
                                   check="Dispatch")])
             continue
-        report.streams[d.name] = cls(checker_cfg).run(d, window)
+        entries.append((d, cls))
 
+    def _run_one(item: tuple[Path, type[BaseChecker]]) -> StreamReport:
+        d, cls = item
+        return cls(checker_cfg).run(d, window)
+
+    if entries:
+        with ThreadPoolExecutor(max_workers=min(4, len(entries))) as pool:
+            # map 按提交序返回:streams 的字典序与串行版一致
+            for (d, _cls), rep in zip(entries, pool.map(_run_one, entries)):
+                report.streams[d.name] = rep
     return report
 
 

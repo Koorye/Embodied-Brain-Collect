@@ -7,8 +7,9 @@
    预扫一遍、规格一遍、写帧再一遍),改用 ``load_stream_index``
    只读时间戳与列名,并把各会话的预扫放进进程池并行;索引异常时
    自动回退整段装载,语义与原版一致。
-2. 视频截段(ffmpeg 重编码 + 首帧自验 + 时间戳 parquet)全部提前
-   提交到独立进程池,与主进程的 add_frame 写帧循环完全重叠。
+2. 视频截段(智能截段:整 GOP 流拷贝 + 头部边角重编码,见 pack_daily.
+   _smart_cut;首帧自验 + 时间戳 parquet)全部提前提交到独立进程池,与
+   主进程的 add_frame 写帧循环完全重叠。
 3. 每个会话的 npz 流装载在进程池预取(深度 1),与上一会话的写帧
    重叠;大数组经管道回传,内存峰值约为两个会话的流数据。
 4. 去掉逐样本 tqdm(每样本开销可观),改为每个流写完打印样本数。
@@ -18,7 +19,9 @@ mf_lerobot 的 add_frame 逐样本 API 决定写帧循环仍在主进程串行;
 
 用法与 pack_daily.py 完全一致,另加::
 
-    --workers N   进程池大小(默认 4;预扫/流装载与视频截段池同宽)
+    --workers N         进程池大小(默认 4;预扫/流装载与视频截段池同宽)
+    --save-threads N    save_episode 特征级并行线程数(默认 8;1=串行;
+                        与 --workers 的视频截段进程池无关)
 
 依赖 conda 环境 collect(mf_lerobot)。Windows spawn 子进程有数秒
 导入开销,会话/视频很少时收益缩小;要完全复刻原版行为用原脚本。
@@ -374,10 +377,10 @@ def _write_episode(ds, session_dir: Path, task_label: str,
             if not len(ts_w):
                 continue
             rel = (ts_w - t0).astype(np.float64)
+        print(f"  {key}: {len(rel)} samples", flush=True)
         for t, v in zip(rel, vals_w):
             ds.add_frame(key, v, float(t))
         present.add(key)
-        print(f"  {key}: {len(rel)} samples")
 
     for slot, res in video_results.items():
         if not res.n:
@@ -528,6 +531,7 @@ def main(argv: list[str] | None = None) -> int:
         ds = MultiFrequencyLeRobotDataset.create(
             repo_id=args.out.name, fps=MASTER_FPS,
             features=specs, root=args.out, use_videos=True,
+            save_threads=args.save_threads,
         )
 
         # info.json 保持 mf_lerobot 写下的 LeRobot 标准字段 —— 额外信息

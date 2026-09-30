@@ -653,23 +653,31 @@ class VideoDecode:
     opened: bool = True
 
 
+class _KeyframeUnsupported(Exception):
+    """关键帧采样的前提不成立 — 调用方回退全量解码路径。"""
+
+
 def decode_video(mp4: Path, frame_ts, window: dict | None,
                  rate_hz: float = 2.0) -> VideoDecode:
     """Decode ``mp4`` once, collecting everything the video checks need.
 
     引擎是仓库自带的 ffmpeg 而不是 cv2:解码+抽帧+转灰度在一条 ffmpeg
     管道里完成,管道上只流过抽中的整帧灰度图,均值/帧差仍在 numpy 里按
-    原口径计算。同样逐帧解码 1734 帧的 HEVC 文件,cv2 read 循环 ~9s,
-    这条管道 ~3s——差的全部是逐帧 Python 循环和 BGR 转换拷贝。采样位置、
-    lums/diffs/t_samp 的语义与 cv2 路径逐值一致(已对冻结/健康视频验证),
-    ffmpeg 缺失时回退 :func:`_decode_video_cv2`。
+    原口径计算。ffmpeg 缺失时回退 :func:`_decode_video_cv2`。
+
+    采样策略(默认关键帧采样):黑屏/冻结检查的告警阈值 run_s(2s)远
+    大于采样间隔,低频亮度采样就够 —— 用 ``-skip_frame nokey`` 只解码
+    关键帧(录制契约 keyint=fps ⇒ 每秒 1 帧),而不是全量解码后再由
+    select 丢帧。实际采样率写回 ``out.rate_hz``,检查里 run 长度按实际
+    间隔换算,语义不变(>2s 的事件两种采样都恰好覆盖)。关键帧信息缺
+    失、解码数量与 ffprobe 关键包数不符、pts 不在 CFR 网格上等任何
+    前提不成立,自动回退原全量解码路径(_decode_full)。
     """
     from ..utils.media import ffprobe_video_info, media_tool
     try:
         ff = media_tool("ffmpeg")
     except RuntimeError:                      # 机器上没有 ffmpeg
         return _decode_video_cv2(mp4, frame_ts, window, rate_hz)
-    import subprocess
 
     out = VideoDecode(file=mp4.name, rate_hz=rate_hz)
     try:
@@ -682,7 +690,6 @@ def decode_video(mp4: Path, frame_ts, window: dict | None,
         return out
     out.fps = info["fps"] or 30.0
     out.n_frames = info["n_packets"]
-    stride = max(1, int(round(out.fps / rate_hz)))
 
     ts = np.asarray(frame_ts, dtype=np.float64) if frame_ts is not None else None
     i0 = i1 = None
@@ -693,6 +700,96 @@ def decode_video(mp4: Path, frame_ts, window: dict | None,
     out.n_window = (i1 - i0 + 1) if i0 is not None else None
     out.i0, out.i1 = i0, i1
 
+    try:
+        _sample_keyframes(out, ff, mp4, info, ts, i0, i1, rate_hz)
+        return out
+    except _KeyframeUnsupported:
+        pass
+    _decode_full(out, ff, mp4, info, ts, i0, i1, rate_hz)
+    return out
+
+
+def _sample_keyframes(out: VideoDecode, ff: str, mp4: Path, info: dict,
+                      ts, i0, i1, rate_hz: float) -> None:
+    """只解关键帧的采样路径;前提不成立抛 :class:`_KeyframeUnsupported`。"""
+    import subprocess
+
+    tb_num, tb_den = info["time_base"]
+    if not info["key_pts"] or not tb_den or not out.fps:
+        raise _KeyframeUnsupported("无关键帧/时基信息")
+    # CFR 网格对位:pts × fps / 时基 = 容器帧号。录制契约保证整数网格;
+    # 对不齐(非 CFR/非常规容器)说明帧号算术不可信,整体回退
+    gidx = [round(p * out.fps * tb_num / tb_den) for p in info["key_pts"]]
+    if (any(b <= a for a, b in zip(gidx, gidx[1:]))
+            or gidx[0] < 0 or gidx[-1] >= max(info["n_packets"], 1)):
+        raise _KeyframeUnsupported("关键帧 pts 不在 CFR 网格上")
+    n_in = sum(1 for k in gidx if i0 is None or i0 <= k <= i1)
+    if n_in < 2:
+        raise _KeyframeUnsupported("窗口内关键帧不足")
+
+    cmd = [ff, "-hide_banner", "-loglevel", "error", "-noautorotate",
+           "-skip_frame", "nokey", "-threads", "2",
+           "-i", str(mp4), "-map", "0:v:0", "-vsync", "0",
+           "-vf", "format=gray", "-f", "rawvideo", "-"]
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL)
+    except OSError:
+        raise _KeyframeUnsupported("ffmpeg 启动失败") from None
+    assert proc.stdout is not None
+    frame_bytes = info["width"] * info["height"]
+    lums: list[float] = []
+    diffs: list[float] = []
+    t_samp: list[float] = []
+    prev: np.ndarray | None = None
+    min_gap = 0.999 / rate_hz           # 关键帧密于 rate_hz 时再抽稀
+    n_got = 0
+    try:
+        # 解码器按文件序吐出全部关键帧:gidx 把第 n 个输出对位到容器
+        # 帧号,窗口外的帧消费掉但不采样
+        for k in gidx:
+            buf = proc.stdout.read(frame_bytes)
+            if len(buf) < frame_bytes:
+                break
+            n_got += 1
+            if i0 is not None and not (i0 <= k <= i1):
+                continue
+            t = (float(ts[k]) if ts is not None and k < ts.size
+                 else k / out.fps)
+            if t_samp and t - t_samp[-1] < min_gap:
+                continue
+            gray = np.frombuffer(buf, dtype=np.uint8).reshape(
+                info["height"], info["width"])
+            if prev is not None:
+                diffs.append(
+                    float(np.abs(gray.astype(np.float32) - prev).mean()))
+            lums.append(float(gray.mean()))
+            t_samp.append(t)
+            prev = gray
+        rc = proc.wait()
+    finally:
+        proc.stdout.close()
+    # 实际解出的关键帧数必须与 ffprobe 的关键包数一致,否则 gidx 对位
+    # 不可信(open-GOP 等特殊容器),回退全量路径
+    if n_got != len(gidx) or rc != 0:
+        raise _KeyframeUnsupported(f"关键帧解码 {n_got}/{len(gidx)}")
+
+    out.lums = np.asarray(lums, dtype=np.float64)
+    out.diffs = np.asarray(diffs, dtype=np.float64)
+    out.t_samp = np.asarray(t_samp, dtype=np.float64)
+    if out.t_samp.size >= 2 and np.diff(out.t_samp).mean() > 0:
+        # 实际采样率(keyint 决定,通常 1Hz);BlackFrame/Freeze 的 run
+        # 长度换算用这个值,采样变稀后秒数口径依旧正确
+        out.rate_hz = float(1.0 / np.median(np.diff(out.t_samp)))
+    out.opened = True
+
+
+def _decode_full(out: VideoDecode, ff: str, mp4: Path, info: dict,
+                 ts, i0, i1, rate_hz: float) -> None:
+    """全量解码路径(逐帧解码,select 后丢弃)—— 关键帧采样的回退。"""
+    import subprocess
+
+    stride = max(1, int(round(out.fps / rate_hz)))
     # 0-based 容器帧号:窗口内 + stride 步长(cv2 路径的 1-based
     # ``i0 < n <= i1+1`` 且 ``n % stride == 1`` 与之逐位置等价)
     if i0 is None:
@@ -706,13 +803,14 @@ def decode_video(mp4: Path, frame_ts, window: dict | None,
             if i0 is not None else f"not(mod(n\\,{stride}))")
     # -noautorotate:统计按存储像素算,和 cv2 路径同一口径
     cmd = [ff, "-hide_banner", "-loglevel", "error", "-noautorotate",
-           "-i", str(mp4), "-map", "0:v:0", "-vsync", "0",
+           "-threads", "2", "-i", str(mp4), "-map", "0:v:0", "-vsync", "0",
            "-vf", f"select='{cond}',format=gray", "-f", "rawvideo", "-"]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
                                 stderr=subprocess.DEVNULL)
     except OSError:
-        return _decode_video_cv2(mp4, frame_ts, window, rate_hz)
+        out.opened = False
+        return
     assert proc.stdout is not None
     frame_bytes = info["width"] * info["height"]
     lums: list[float] = []
@@ -739,7 +837,6 @@ def decode_video(mp4: Path, frame_ts, window: dict | None,
     out.lums = np.asarray(lums, dtype=np.float64)
     out.diffs = np.asarray(diffs, dtype=np.float64)
     out.t_samp = np.asarray(t_samp, dtype=np.float64)
-    return out
 
 
 def _decode_video_cv2(mp4: Path, frame_ts, window: dict | None,

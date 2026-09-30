@@ -57,3 +57,32 @@ class EgoHeadbandChecker(BaseChecker):
         # BaseChecker.run reads self.checks right after prepare, so mirroring
         # the discovered streams here is what makes the count dynamic.
         self.checks = checks
+
+        # 视频解码预热:N 路相机的解码并行跑(解码在 ffmpeg 子进程里,
+        # Python 线程只读管道),结果直接进 ctx 缓存 —— 否则 checks 串行
+        # 执行会让每路 mp4 的解码排队,这是头环 QC 的耗时大头。键名与
+        # _VideoCheck.decode 的 artifact 键严格一致(f"video:{name}.mp4")。
+        # 时间戳在主线程先取全(ctx.series 的 npz 懒加载非线程安全),
+        # 线程池里只剩纯子进程的 decode_video;失败的路不预填,惰性
+        # 路径自然重试。
+        vids = [c for c in cams if (ctx.dir / f"{c}.mp4").exists()]
+        if len(vids) > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            from .checks import decode_video
+            raws = {}
+            for cam in vids:
+                s = ctx.series(cam)
+                raws[cam] = s.raw if s is not None else None
+
+            def _decode(cam: str):
+                try:
+                    return decode_video(ctx.dir / f"{cam}.mp4", raws[cam],
+                                        ctx.window)
+                except Exception:
+                    return None
+
+            with ThreadPoolExecutor(
+                    max_workers=min(4, len(vids))) as pool:
+                for cam, dec in zip(vids, pool.map(_decode, vids)):
+                    if dec is not None:
+                        ctx.set_artifact(f"video:{cam}.mp4", dec)

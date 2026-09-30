@@ -338,6 +338,10 @@ class CheckContext:
             self._cache[key] = factory()
         return self._cache[key]
 
+    def set_artifact(self, key: str, value: Any) -> None:
+        """预填缓存(如并行解码好的视频),后续 artifact 命中零开销。"""
+        self._cache[key] = value
+
     # ---- lifecycle ------------------------------------------------------
 
     def close(self) -> None:

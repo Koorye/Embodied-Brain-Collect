@@ -16,3 +16,4 @@ pyyaml
 mss                     # 辅助员控制台的刺激屏截屏(assist_console)
 pygame
 bcigo_sdk
+cv2-enumerate-cameras

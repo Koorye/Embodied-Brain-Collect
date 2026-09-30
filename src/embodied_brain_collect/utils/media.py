@@ -74,16 +74,18 @@ def ffprobe_count(path: Path) -> int:
 def ffprobe_video_info(path: Path) -> dict:
     """一次 ffprobe 调用拿齐 QC 解码需要的容器元数据。
 
-    返回 ``{"n_packets", "fps", "width", "height"}``;fps 解不出时为
-    ``None``,由调用方回退默认值。容器读不出时抛 RuntimeError(与
-    :func:`ffprobe_count` 同口径,stderr 带原因)。
+    返回 ``{"n_packets", "fps", "width", "height", "time_base",
+    "key_pts"}``;fps 解不出时为 ``None``,由调用方回退默认值。
+    ``time_base`` 为 (num, den) 分数,``key_pts`` 为关键帧包的 pts 刻度
+    列表(按包序,供 -skip_frame nokey 采样对位)。容器读不出时抛
+    RuntimeError(与 :func:`ffprobe_count` 同口径,stderr 带原因)。
     """
     try:
         out = subprocess.run(
             [media_tool("ffprobe"), "-v", "error", "-select_streams", "v:0",
              "-count_packets",
              "-show_entries", "stream=nb_read_packets,r_frame_rate,"
-                              "width,height",
+                              "width,height,time_base:packet=pts,flags",
              "-of", "json", str(path)],
             capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as exc:
@@ -91,7 +93,8 @@ def ffprobe_video_info(path: Path) -> dict:
         raise RuntimeError(f"ffprobe 读不出 {path} (rc={exc.returncode}):"
                            f" {stderr}") from exc
     import json
-    streams = json.loads(out.stdout).get("streams") or [{}]
+    doc = json.loads(out.stdout)
+    streams = doc.get("streams") or [{}]
     st = streams[0]
     fps = None
     num, _, den = (st.get("r_frame_rate") or "0/0").partition("/")
@@ -100,7 +103,19 @@ def ffprobe_video_info(path: Path) -> dict:
             fps = float(num) / float(den)
     except ValueError:
         pass
+    tb_num, _, tb_den = (st.get("time_base") or "0/0").partition("/")
+    try:
+        time_base = (int(tb_num), int(tb_den))
+    except ValueError:
+        time_base = (0, 0)
+    key_pts: list[int] = []
+    for pkt in doc.get("packets") or []:
+        pts = pkt.get("pts")
+        if pts is not None and "K" in (pkt.get("flags") or ""):
+            key_pts.append(int(pts))
     return {"n_packets": int(st.get("nb_read_packets") or 0),
             "fps": fps,
             "width": int(st.get("width") or 0),
-            "height": int(st.get("height") or 0)}
+            "height": int(st.get("height") or 0),
+            "time_base": time_base,
+            "key_pts": key_pts}

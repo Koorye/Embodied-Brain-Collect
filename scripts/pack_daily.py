@@ -52,6 +52,8 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
@@ -968,23 +970,202 @@ def _camera_span(session_dir: Path, video_slots) -> tuple[float, float] | None:
 # (Windows 用 third_party exe,其余平台用系统命令),与录制端、reqc 同一套。
 
 
+# 单个编码任务的 ffmpeg 线程上限:并发 4 路 × 2 线程恰好铺满 4 核 8 线程
+# 的采集机。此前每路 libx264 默认开约 1.5×逻辑核的线程,4 路并发互相踩踏
+# 把整机打满,是"打包跑很久且系统卡死"的直接原因。帧线程模式下线程数
+# 不改变编码结果。
+_FFMPEG_THREADS = max(1, (os.cpu_count() or 4) // 4)
+
+
+def _smart_cut_enabled() -> bool:
+    """EB_PACK_SMART_CUT=0/false/no/off 关闭智能截段,强制全量重编码。"""
+    return os.environ.get("EB_PACK_SMART_CUT", "").strip().lower() not in (
+        "0", "false", "no", "off")
+
+
+def _run_ffmpeg(args: list[str]) -> None:
+    """跑一条 ffmpeg 命令;失败时抛 RuntimeError 携带 stderr 尾部。"""
+    p = subprocess.run(
+        [media_tool("ffmpeg"), "-y", "-loglevel", "error", *args],
+        capture_output=True)
+    if p.returncode != 0:
+        tail = p.stderr.decode("utf-8", errors="replace").strip().splitlines()
+        raise RuntimeError("; ".join(tail[-4:]) or f"rc={p.returncode}")
+
+
+def _probe_stream(mp4: Path) -> dict:
+    """视频流容器元数据:codec、重排帧数、帧率、时基、像素格式。"""
+    p = subprocess.run(
+        [media_tool("ffprobe"), "-v", "error", "-select_streams", "v:0",
+         "-show_entries",
+         "stream=codec_name,has_b_frames,r_frame_rate,time_base,pix_fmt",
+         "-of", "json", str(mp4)],
+        capture_output=True, text=True, check=True)
+    st = (json.loads(p.stdout).get("streams") or [{}])[0]
+    num, _, den = (st.get("r_frame_rate") or "").partition("/")
+    tb_num, _, tb_den = (st.get("time_base") or "").partition("/")
+    try:
+        st["fps"] = float(num) / float(den)
+        st["tb"] = (int(tb_num), int(tb_den))
+    except (ValueError, ZeroDivisionError):
+        st["fps"], st["tb"] = 0.0, (0, 0)
+    return st
+
+
+def _packet_pts(mp4: Path) -> list[tuple[int, bool]]:
+    """容器包序的 (pts, 是否关键帧);有无 pts 的包(损坏容器)时抛错。"""
+    p = subprocess.run(
+        [media_tool("ffprobe"), "-v", "error", "-select_streams", "v:0",
+         "-show_packets", "-show_entries", "packet=pts,flags",
+         "-of", "json", str(mp4)],
+        capture_output=True, text=True, check=True)
+    out: list[tuple[int, bool]] = []
+    for pkt in json.loads(p.stdout).get("packets") or []:
+        pts = pkt.get("pts")
+        if pts is None:
+            raise RuntimeError(f"{mp4.name}: 存在无 pts 的包")
+        out.append((int(pts), "K" in (pkt.get("flags") or "")))
+    return out
+
+
+def _smart_cut(src_mp4: Path, out_mp4: Path, i0: int, n: int, fps: int) -> None:
+    """智能截段:头部边角重编码 + 其余整 GOP 逐比特流拷贝。
+
+    录制端契约(FFmpegWriter/FFmpegJpegWriter:CFR、bframes=0、
+    keyint=fps、timescale 90000)成立时,窗口 [i0, i1] 的截段不必整段
+    重编码:
+
+    - 头段 [i0, k):k 为 i0 起第一个关键帧,不足一个 GOP,libx265 按
+      录制端同款参数重编码(bframes=0);
+    - 中尾段 [k, i1]:自关键帧起的整 GOP 流拷贝,尾部按包数精确截断
+      (闭合 GOP + 无 B 帧,截断前缀自洽可解码)。
+
+    两段经 MPEG-TS 中转拼接:TS 在关键帧前重发带内参数集,最终 mp4 以
+    hev1 tag 落盘(允许带内参数集)—— 头段重编码与源码流参数集不同
+    (编码器版本差异)也能各自可解码。输出与全量重编码同契约:CFR、
+    PTS = i/fps、无 B 帧,中段无二次编码损失,编码量从整段降到一个
+    GOP 以内。任何前提不成立或校验不过都抛异常,由调用方回退全量
+    重编码。
+    """
+    st = _probe_stream(src_mp4)
+    tb_num, tb_den = st["tb"]
+    try:
+        n_bf = int(st.get("has_b_frames"))
+    except (TypeError, ValueError):
+        n_bf = -1
+    if (st.get("codec_name") != "hevc" or n_bf != 0
+            or st["fps"] != float(fps) or not tb_den
+            or tb_den % (tb_num * fps)):
+        raise RuntimeError("容器不满足录制端契约(非 hevc/有 B 帧/非整帧时基)")
+    ticks = tb_den // (tb_num * fps)        # 每帧 pts 步进,90000/30 = 3000
+    pkts = _packet_pts(src_mp4)
+    i1 = i0 + n - 1
+    if not (0 <= i0 <= i1 < len(pkts)):
+        raise RuntimeError("窗口超出容器范围")
+    if any(pts != j * ticks for j, (pts, _k) in enumerate(pkts)):
+        raise RuntimeError("包序 pts 不在 CFR 整数网格上")
+    kf = [j for j, (_pts, k) in enumerate(pkts[i0:], start=i0) if k]
+    if not kf:
+        raise RuntimeError("窗口内没有关键帧")
+    k = min(kf)
+
+    out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    head = out_mp4.with_suffix(".head.ts")
+    rest = out_mp4.with_suffix(".rest.ts")
+    lst = out_mp4.with_suffix(".concat.txt")
+    try:
+        if k > i0:
+            # 头段重编码:镜像录制端输出参数(no-info 免去 5KB 编码器
+            # 信息 SEI),像素格式沿用源流;TS 封装自带带内参数集
+            _run_ffmpeg([
+                "-ss", f"{i0 / fps:.6f}", "-i", str(src_mp4),
+                "-frames:v", str(k - i0),
+                "-c:v", "libx265", "-crf", "23", "-preset", "medium",
+                "-x265-params", "bframes=0:no-info=1",
+                "-pix_fmt", str(st["pix_fmt"]),
+                "-r", str(fps), "-fps_mode", "cfr",
+                "-g", str(fps), "-keyint_min", str(fps),
+                "-threads", str(_FFMPEG_THREADS),
+                "-f", "mpegts", str(head)])
+        _run_ffmpeg([
+            "-ss", f"{k / fps:.6f}", "-i", str(src_mp4),
+            "-frames:v", str(i1 - k + 1),
+            "-map", "0:v:0", "-c", "copy", "-f", "mpegts", str(rest)])
+        # concat demuxer 相对清单文件解析条目路径 → 必须写绝对路径
+        lst.write_text(
+            "".join(f"file '{p.resolve().as_posix()}'\n"
+                    for p in (head, rest) if p.exists()),
+            encoding="utf-8")
+        _run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(lst),
+                     "-map", "0:v:0", "-c", "copy", "-tag:v", "hev1",
+                     "-video_track_timescale", str(tb_den), str(out_mp4)])
+        # 校验与全量重编码同口径:帧数精确、pts 严格 CFR 整数网格。
+        # 解码自验聚焦拼接风险区(解码错误不改 ffmpeg 返回码,以进度行
+        # 的实际输出帧数为准):
+        # - 头段重编码与拷贝段的参数集切换点:从头解 [0, 头段+2个GOP),
+        #   精确数帧 —— SPS 不衔接在这里表现为解码中断在头段末尾;
+        # - 尾段截断点:输入 seek 到窗口末尾前 3s,精确解出 90 帧。
+        # 中段是源码流的逐比特拷贝,且源已通过上面的包序网格校验;
+        # 整段解码自验在 4 路并发时占 ~70s,聚焦后每路 <3s
+        _q = _packet_pts(out_mp4)
+        if len(_q) != n or any(pts != j * ticks
+                               for j, (pts, _k) in enumerate(_q)):
+            raise RuntimeError(f"截段校验失败({len(_q)}/{n} 帧,网格不齐)")
+        jn = min(n, (k - i0) + 60)            # 头段 + 拷贝段头两个 GOP
+        p = subprocess.run(
+            [media_tool("ffmpeg"), "-threads", str(_FFMPEG_THREADS),
+             "-i", str(out_mp4), "-map", "0:v:0",
+             "-frames:v", str(jn), "-f", "null", "-"], capture_output=True)
+        frames = re.findall(rb"frame=\s*(\d+)", p.stderr)
+        n_dec = int(frames[-1]) if frames else 0
+        if p.returncode != 0 or n_dec != jn:
+            raise RuntimeError(f"拼接点解码自验失败({n_dec}/{jn} 帧)")
+        if jn < n:
+            tail = 90
+            p2 = subprocess.run(
+                [media_tool("ffmpeg"), "-threads", str(_FFMPEG_THREADS),
+                 "-ss", f"{(n - tail) / fps:.6f}", "-i", str(out_mp4),
+                 "-map", "0:v:0", "-frames:v", str(tail),
+                 "-f", "null", "-"], capture_output=True)
+            f2 = re.findall(rb"frame=\s*(\d+)", p2.stderr)
+            n_tail = int(f2[-1]) if f2 else 0
+            if p2.returncode != 0 or n_tail != tail:
+                raise RuntimeError(f"尾段解码自验失败({n_tail}/{tail} 帧)")
+    finally:
+        for p in (head, rest, lst):
+            p.unlink(missing_ok=True)
+
+
 def write_video_ffmpeg(src_mp4: Path, out_mp4: Path, seek_s: float,
                        dur_s: float, fps: int) -> int:
-    """ffmpeg 截段 + fps 归一化重编码;返回输出帧数。
+    """ffmpeg 截段 + fps 归一化;返回输出帧数。
 
-    跳过逐帧解码/PNG 中间态:直接从源 mp4 截出 episode 对应的时间段。
+    默认智能截段(见 ``_smart_cut``):录制端契约成立时只重编码头部不足
+    一个 GOP 的边角,其余整 GOP 流拷贝。回退路径为全量重编码(原行为,
+    仅新增 ``-bf 0`` 与线程上限),两者输出同契约:CFR、PTS = i/fps、
+    无 B 帧,保持录制端"解码第 i 帧 == 第 i 个时间戳"的帧序不变量。
     """
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    n, i0 = round(dur_s * fps), round(seek_s * fps)
+    if n > 0 and _smart_cut_enabled():
+        try:
+            _smart_cut(src_mp4, out_mp4, i0, n, fps)
+            return n
+        except Exception as exc:
+            print(f"[video] 智能截段回退全量重编码: {exc}")
+            out_mp4.unlink(missing_ok=True)
     tmp = out_mp4.with_suffix(".tmp.mp4")
     cmd = [media_tool("ffmpeg"), "-y", "-loglevel", "error",
            "-ss", f"{max(0.0, seek_s):.3f}", "-i", str(src_mp4),
            "-t", f"{max(0.0, dur_s):.3f}",
            "-vf", f"fps={fps}", "-c:v", "libx264", "-preset", "veryfast",
-           "-crf", "18", "-pix_fmt", "yuv420p", str(tmp)]
+           "-bf", "0",
+           "-crf", "18", "-pix_fmt", "yuv420p", "-threads", str(_FFMPEG_THREADS),
+           str(tmp)]
     subprocess.run(cmd, check=True, capture_output=True)
-    n = ffprobe_count(tmp)
+    n_out = ffprobe_count(tmp)
     tmp.replace(out_mp4)
-    return n
+    return n_out
 
 
 def write_video_timestamps(ds, key: str, ep_idx: int, rel_ts: np.ndarray) -> None:
@@ -1000,13 +1181,13 @@ def write_video_timestamps(ds, key: str, ep_idx: int, rel_ts: np.ndarray) -> Non
     table = pa.table({
         "timestamp": pa.array(rel_ts, type=pa.float64()),
         "episode_index": pa.array(
-            np.full(len(rel_ts), ep_idx, dtype=np.int64), type=pa.int64()),
+            np.full(len(rel_ts), ep_idx, dtype=np.int64), type=np.int64()),
     })
     pq.write_table(table, fpath, compression="snappy")
 
 
-def _decode_frames(path: Path, start: int, count: int) -> list[np.ndarray]:
-    """容器 [start, start+count) 的灰度帧;不足则截断。"""
+def _decode_frames_seq(path: Path, start: int, count: int) -> list[np.ndarray]:
+    """顺序解码版(帧号 = 解码序):兼容任何容器,量大的容器较慢。"""
     import av
     out: list[np.ndarray] = []
     with av.open(str(path)) as container:
@@ -1016,6 +1197,38 @@ def _decode_frames(path: Path, start: int, count: int) -> list[np.ndarray]:
                 if len(out) >= count:
                     break
     return out
+
+
+def _decode_frames(path: Path, start: int, count: int) -> list[np.ndarray]:
+    """容器 [start, start+count) 的灰度帧;不足则截断。
+
+    先 seek 到 start 附近的关键帧再向前解码(录制契约下 pts×fps 即帧号),
+    不再从第 0 帧解起:长录制里窗口靠后时,自验解码量从整段降到 GOP 量级。
+    帧号推算出现不连续(丢包/非 CFR 容器)时退回顺序解码,行为与原实现
+    一致。
+    """
+    import av
+    with av.open(str(path)) as container:
+        stream = container.streams.video[0]
+        rate = float(stream.average_rate or 0)
+        tb = float(stream.time_base)
+        if rate > 0 and tb > 0:
+            target = max(0.0, start / rate - 1.5)   # keyint ≤1s,留 1.5s 余量
+            container.seek(int(target / tb), stream=stream, backward=True)
+            out: list[np.ndarray] = []
+            expect: int | None = None
+            for frame in container.decode(video=0):
+                j = round(frame.pts * tb * rate)
+                if expect is not None and j != expect:
+                    return _decode_frames_seq(path, start, count)
+                expect = j + 1
+                if j >= start:
+                    out.append(
+                        frame.to_ndarray(format="gray").astype(np.float32))
+                    if len(out) >= count:
+                        return out
+            return out
+    return _decode_frames_seq(path, start, count)
 
 
 def _decode_frame_at(path: Path, index: int) -> np.ndarray:
@@ -1033,7 +1246,11 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
                       fps: int = 30, guard: int = 8) -> int:
     """按到达序号精确截段:返回写出的帧数(时间戳 = all_ts[i0:i1+1] - t0)。
 
-    从源 mp4 的 i0/fps 处截出窗口段(CFR 容器下按序号 -ss 即精确落帧),
+    截段走 write_video_ffmpeg(默认智能截段:整 GOP 流拷贝 + 头部边角
+    重编码,不满足录制端契约时全量重编码),输出统一 CFR、无 B 帧。
+    实际写出的帧数与窗口帧数不一致时丢弃该视频流并告警 —— 时间戳
+    parquet 与容器帧必须逐帧 1:1,宁缺毋错。
+
     再用源视频内容自验:在 [i0-guard, i0+guard] 的容器帧里找与截段首帧
     最匹配的帧。实测录制严格 CFR 且容器帧序号与 npz 到达序号 1:1,匹配
     落在 i0±1 内;候选窗画面静止时 argmin 不可辨,但窗口内任何一帧内容
@@ -1049,7 +1266,7 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
     n = i1 - i0 + 1
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
 
-    write_video_ffmpeg(src_mp4, out_mp4, i0 / fps, n / fps, fps)
+    n_out = write_video_ffmpeg(src_mp4, out_mp4, i0 / fps, n / fps, fps)
 
     try:
         naive0 = _decode_frame_at(out_mp4, 0)
@@ -1072,6 +1289,12 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
                   "请核对该路录制")
 
     rel_ts = all_ts[i0:i1 + 1].astype(np.float64) - t0
+    if n_out != len(rel_ts):
+        print(f"[video] {key}: 截段实际写出 {n_out} 帧,与窗口帧数 "
+              f"{len(rel_ts)} 不一致 — 时间戳无法逐帧对齐,丢弃该视频流,"
+              "其余模态继续打包")
+        out_mp4.unlink(missing_ok=True)
+        return 0
     return len(rel_ts)
 
 
@@ -1429,6 +1652,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="保留中间 PNG 帧(默认编码后删除)")
     p.add_argument("--max-episodes", type=int, default=None,
                    help="只转换前 N 个会话(调试用)")
+    p.add_argument("--save-threads", type=int, default=8,
+                   help="save_episode 阶段特征级并行线程数(1=串行;"
+                        "每个特征写各自的 parquet/wav,默认 8)")
     args = p.parse_args(argv)
     args.out_auto = args.out is None     # 自动命名 → 原地追加数据起止时刻;
                                          # 指定 --out → 进一层 <out>/<日期>-起-止
@@ -1598,6 +1824,7 @@ def main(argv: list[str] | None = None) -> int:
     ds = MultiFrequencyLeRobotDataset.create(
         repo_id=args.out.name, fps=MASTER_FPS,
         features=specs, root=args.out, use_videos=True,
+        save_threads=args.save_threads,
     )
 
     # info.json 保持 mf_lerobot 写下的 LeRobot 标准字段 —— 采集版本/硬件/
