@@ -1,5 +1,113 @@
 # 修改记录
 
+## 1.5.2 — 2026-09-30
+
+### QC 视频检查:关键帧采样 + 模态并发
+
+* **qc_session 各模态目录的检查并发执行**(线程池,默认 4):检查的重头
+  是 ffmpeg 解码子进程,Python 侧只是读管道,线程即可重叠;各 checker
+  只读自己的目录互不共享状态。报告结构、发现条目与逐目录串行一致
+  (``streams`` 按目录序收集)。
+* **decode_video 默认关键帧采样**:黑屏/冻结检查的告警阈值 run_s(2s)
+  远大于采样间隔,低频亮度采样就够 —— 用 ``-skip_frame nokey`` 只解码
+  关键帧(录制契约 keyint=fps ⇒ 每秒 1 帧),不再全量解码后再 select
+  丢帧。实际采样率写回 ``out.rate_hz``,检查里 run 长度按实际间隔换算,
+  语义不变(>2s 的事件两种采样都恰好覆盖)。关键帧信息缺失、解码数与
+  ffprobe 关键包数不符、pts 不在 CFR 网格上等前提不成立,自动回退原
+  全量解码路径;ffmpeg 缺失仍回退 cv2。解码统一钉 ``-threads 2``。
+  ``ffprobe_video_info`` 一次调用顺带返回 ``time_base`` 与 ``key_pts``
+  (关键包 pts 列表,供采样对位)。
+* **ego_headband checker 视频解码预热**:N 路相机的解码在 prepare 阶段
+  线程池并行跑,结果 ``set_artifact`` 预填缓存 —— 否则 checks 串行执行
+  让每路 mp4 的解码排队,这是头环 QC 的耗时大头;时间戳在主线程先取全
+  (npz 懒加载非线程安全),失败的路不预填、惰性路径自然重试。
+
+### 打包加速:智能截段(整 GOP 流拷贝)+ save_episode 并行
+
+* **pack_daily ``_smart_cut`` 智能截段**:录制端契约(hevc、bframes=0、
+  keyint=fps、CFR 整数网格)成立时,窗口截段只重编码头部不足一个 GOP
+  的边角,其余整 GOP 逐比特流拷贝(尾部按包数精确截断,闭合 GOP + 无
+  B 帧的前缀自洽可解码),两段经 MPEG-TS 中转拼接(TS 在关键帧前重发
+  带内参数集,最终 mp4 以 hev1 落盘)。校验与全量重编码同口径:输出
+  帧数精确、pts 严格 CFR 网格;解码自验聚焦风险区(头段 + 拷贝段头两
+  个 GOP、尾段 90 帧),整段解码自验在 4 路并发时占 ~70s,聚焦后每路
+  <3s。任何前提不成立或校验不过回退全量重编码(原行为,新增 ``-bf 0``);
+  ``EB_PACK_SMART_CUT=0`` 可强制全量。编码量从整段降到一个 GOP 以内。
+* **ffmpeg 编码线程上限** ``_FFMPEG_THREADS = cpu//4``:此前每路 libx264
+  默认开 ~1.5×逻辑核的线程,4 路并发互相踩踏把整机打满,是"打包跑很久
+  且系统卡死"的直接原因;帧线程模式下线程数不改变编码结果。
+* **``_decode_frames`` 先 seek 再前解**(录制契约下 pts×fps 即帧号):
+  长录制里窗口靠后时,自验解码量从整段降到 GOP 量级;帧号不连续(丢包/
+  非 CFR 容器)退回顺序解码,行为与原实现一致。
+* **cut_video_aligned 帧数核对**:截段实际写出帧数与窗口帧数不一致时
+  丢弃该视频流并告警 —— 时间戳 parquet 与容器帧必须逐帧 1:1,宁缺毋错,
+  其余模态继续打包。
+* **pack_episode / pack_daily_fast**:预扫走 ``load_stream_index`` 只读
+  时间戳与列名(原版每条流被完整解压两遍),特征规格从预扫缓存构建;
+  视频截段提前到 mf_lerobot/torch 导入完成之前提交(冷启动 ~10s 被截段
+  完全覆盖;落盘路径契约本地镜像,导入完成后与模块常量核对,上游演进
+  漂移立刻暴露);**save_episode 特征级并行**(``--save-threads``,默认
+  8,1=串行):每个特征各写 parquet/wav + stats,线程池重叠;逐流样本数
+  写入前打印(写帧循环是最长串行段),去掉逐样本 tqdm。
+
+### 硬件设置文档 + setup 指认工具
+
+* **新增六篇硬件设置文档**:`docs/emg.md`、`docs/manus.md`、
+  `docs/neon_eye.md`、`docs/opencv_camera.md`、`docs/realsense_camera.md`、
+  `docs/vive_tracker.md`(各设备的安装、指认、常见问题);采集员操作
+  说明同步更新。MANUS 标定流程定为:标定后在 Core 的 users → profile
+  settings → calibration profile → save 直接存进 ``~\.cache\manus_glove\``
+  (``Left/RightMetaglovePro.mcal``)。
+* **scripts/setup 新增四个指认/配置工具**:`map_cameras.py`(枚举全部
+  USB 相机并开窗烙 idx,依赖可选 ``cv2-enumerate-cameras``)、
+  `map_realsense.py`(枚举设备开窗烙 serial 尾号)、`map_emg.py`(逐台
+  插入自动 diff 新 COM 口,按左右给出 yaml 填法)、
+  `configure_steamvr_null.py`(SteamVR Null Driver 无头显配置,
+  --dry-run / 自动 .bak / --restore / 幂等可重跑)。
+* 删除不再使用的 `scripts/impedance_check.py`、`scripts/qc_profile.py`
+  与 `egol3_upload_manifest.jsonl`(README 里的残留引用一并清理)。
+
+### BrainCo 阻抗门禁实机修正 + recorder 静态字段
+
+* **实机(2026-09-29)暴露读数为陈值**:旧门禁每通道只收前两窗做均值,
+  连续两轮钉在 313~4869 窄带、不随电极整理变化(同期上位机已是几路绿
+  大片红)—— 收集太短,读到固件上一轮阻抗会话的未收敛值。改法:轮询到
+  所有通道都读到后继续多轮读数,每通道 ≥5 窗且收集 ≥25s 才提前收工
+  (上限 40s),聚合只取每通道**末值**(最近一窗);收尾日志并排打 raw
+  与换算值。
+* **阻抗单位按 kΩ 处理**(原按 Ω):SDK 原值与 BCIGo 上位机读数同量级,
+  阈值(impedance_max_kohm)、展示、落盘统一 kΩ(npz 字段
+  ``eeg_impedance_kohm``);若实机对照上位机差 1000 倍,改
+  ``IMP_VALUE_TO_KOHM`` 一处。leadoff 激励频率/电流可配
+  (``impedance_freq`` / ``impedance_current``)。
+* 回调实机形态 ``(chip, 32 值整帽窗口)`` 支持 + ``(seq, ts, values)``
+  变长形态解析;通道名与固件槽位的映射未核实,拒开时提示超标**数量**
+  不点名。
+* **BaseRecorder 新增 ``_static`` 一次性静态字段**(设备身份等 open 期
+  常量):不进采样缓冲,不被 commit 的预热丢弃清空 —— position 的
+  roles/serials/device_classes/models 走 ``_acc`` 的话 launcher commit
+  一到就被清掉,npz 里从此没有这些字段(打包端无从得知列序对应哪台
+  设备)。openvr/dummy position 均已迁移。
+* run_base 共享 CLI 的会话根目录默认 data/session-night → **data/session**。
+
+### 头环开录掉帧修复(时间戳开头空洞)
+
+* **写队列深度按设备可配**(``_write_queue_size`` 钩子):commit 瞬间恰是
+  写管线最脆弱的时刻 —— 四个 GPU transcode 进程冷启动(CUDA/nvenc 初始
+  化)同时 stim 抢同一块 GPU,实测 0.2-0.4s 写停顿;共享的 8 帧队列在
+  30fps 下仅 0.27s,必然溢出,每个 session 开头丢 6-18 帧/相机(npz
+  时间戳在 0s 与 ~1s 处各留一个洞,即 TimestampGap 报的"开头掉帧")。
+  头环 JPEG 帧(~0.2-0.4MB/帧)缓冲便宜,队列加到 64 帧(~2.1s)吸掉
+  整个冷启动突发,写线程以 ~113fps/路 ~1s 内追平;raw 帧相机(深度帧
+  几十 MB)保持 8,RAM 优先。
+* **GPU probe 提前到 open 的后台线程**(与 TCP 握手并行):探测
+  mjpeg_cuvid→hevc_nvenc(进程级缓存)原本在第一个 commit 帧进写线程
+  时才跑,四个写线程全堵在锁上等它 —— 冷启动停顿叠加写队列溢出的主因
+  之一;commit 时只剩 Popen + 首轮写入。
+* **两级接收缓冲加大**:socket ``SO_RCVBUF`` 8MB(≈满速流 0.6s,收包
+  停顿在内核排队而不是触发 TCP 流控让设备端丢帧);每路解码队列上限
+  64 帧。
+
 ## 1.5.1 — 2026-09-29
 
 ### BrainCo EEG 开录阻抗门禁(参照 Curry)

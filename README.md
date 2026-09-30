@@ -582,9 +582,6 @@ python scripts/qc_report.py data/<批次根>/2026-09-15-10-00-00   # 生成 qc.h
 
 # 按日期批量刷新整天的 QC 报告
 python scripts/qc_batch.py data/session-day --date 2026-09-16
-
-# QC 剖析:逐会话/逐模态/逐检查的耗时与命中统计(调阈值、砍检查项用)
-python scripts/qc_profile.py data/session-day --json profile.json
 ```
 
 ```mermaid
@@ -628,7 +625,6 @@ n/r/f/q——残缺数据的 QC 结论没有意义还拖时间）。
 | `scripts/setup/map_emg.py` | EMG 臂环指认：逐台插入自动 diff 新 COM 口,按左右给出 yaml 填法并与当前配置比对(--list 只列串口),教程见 `docs/emg.md` |
 | `scripts/check_vive.py` | VIVE tracker 体检：实时显示每台位置与轨迹,核对角色绑定（--list 只列出设备） |
 | `scripts/setup/configure_steamvr_null.py` | **SteamVR Null Driver 无头显配置**：输入 Steam 目录自动改两个 default.vrsettings（--dry-run 预览 / 自动 .bak / --restore 回滚 / 幂等可重跑）,教程见 `docs/vive_tracker.md` |
-| `scripts/impedance_check.py` | Curry EEG 独立阻抗体检:触发一次阻抗检测并打印每通道阻抗表(--save 存 npz) |
 | `scripts/assist_console.py` | 辅助员控制台：stim 屏幕镜像 + 第三相机实时画面分屏显示(配置 `configs/assist_console.yaml`) |
 | `scripts/pack_daily.py` | **每日数据打包**：按日期把批次根下的会话打包成 mf-lerobot 数据集 |
 | `scripts/pack_daily_fast.py` | 同上的多进程加速版：预扫走轻量索引、流水线重叠,用法一致（另加 `--workers N`,默认 4） |
@@ -636,7 +632,6 @@ n/r/f/q——残缺数据的 QC 结论没有意义还拖时间）。
 | `scripts/session_summary.py` | 现有数据汇总：产量、任务覆盖、质量问题统计 |
 | `scripts/qc.py` / `qc_report.py` | 手动 QC / 生成 qc.html |
 | `scripts/qc_batch.py` | 批量重跑 QC：对某日期的全部会话刷新 qc_report.json(可选 qc.html) |
-| `scripts/qc_profile.py` | **QC 剖析(v1.5.0)**：逐会话/逐模态/逐检查的墙钟耗时 + 命中统计,定位耗时大头 |
 | `scripts/rebuild_emg_timestamps.py` | 旧 session 的 EMG 时间戳回填（默认 dry-run,`--write` 生效） |
 | `scripts/update_meta_names.py` | 历史数据 meta 补齐/更新各槽位设备显示名（名源 = recorders.yaml 的 `name`） |
 
@@ -828,8 +823,7 @@ python -m tests.eye.test_neon_eye_async       # 硬件 GUI 测试(需显示器)
    ffmpeg 管道完成,容器帧数走 ffprobe 包计数(与打包完整性门同口径),
    均值/帧差仍在 numpy 按原口径计算——单会话 QC **50.8s → 16.5s**
    （头环 4 路视频 41.4s → 11.4s,眼动 6.4s → 2.5s）。无 ffmpeg 环境自动
-   回退 cv2 路径,findings 与旧引擎逐条一致。新增 **`scripts/qc_profile.py`**
-   剖析工具(逐会话/逐模态/逐检查耗时 + 命中统计)。
+   回退 cv2 路径,findings 与旧引擎逐条一致。
 5. **EEG 阻抗门禁结果随包落盘**：Curry 开录阻抗检测的每通道均值(Ω)与
    通过率/门禁结论打包为 `observation.eeg_impedance` 单行常量流
    （timestamp 固定 0,不过窗口不平移）;缺该流的会话(BrainCo/关门禁)
