@@ -52,9 +52,11 @@ from pack_daily import (  # noqa: E402
     load_task_label, make_master_timeline, probe_video_shape,
     rename_out_by_span, video_feature_key, write_collect_meta, write_qc_meta,
 )
-from mf_lerobot import MultiFrequencyLeRobotDataset  # noqa: E402
-from mf_lerobot.utils import (  # noqa: E402
-    DEFAULT_DATA_PATH, DEFAULT_VIDEO_PATH)
+
+# mf_lerobot(连带 torch,冷启动 10s+)不进模块级 import:本模块会被
+# spawn 子进程作为 worker 函数的所属模块重新导入(本脚本的进程池,以及
+# pack_episode 移植版),模块级重依赖会让每个子进程白付一次 torch 冷启动。
+# 需要处(main / _write_timestamps_parquet)函数内懒加载。
 
 # 原版 build_feature_specs 对 emg 两键传 names=None,规格构建时对齐
 _EMG_KEYS = ("observation.left_wrist_emg", "observation.right_wrist_emg")
@@ -224,6 +226,7 @@ def _write_timestamps_parquet(root: Path, key: str, ep_idx: int,
     """= pack_daily.write_video_timestamps,root 显式传参(worker 无 ds)。"""
     import pyarrow as pa
     import pyarrow.parquet as pq
+    from mf_lerobot.utils import DEFAULT_DATA_PATH
 
     fpath = root / DEFAULT_DATA_PATH.format(
         episode_chunk=ep_idx // 1000, episode_index=ep_idx, feature_key=key)
@@ -520,6 +523,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             shutil.rmtree(args.out)
 
+        from mf_lerobot import MultiFrequencyLeRobotDataset
+        from mf_lerobot.utils import DEFAULT_VIDEO_PATH
         ds = MultiFrequencyLeRobotDataset.create(
             repo_id=args.out.name, fps=MASTER_FPS,
             features=specs, root=args.out, use_videos=True,

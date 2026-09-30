@@ -611,7 +611,7 @@ def run_queue(session_root: Path, queue: list[dict], *, stim: str,
 # =============================================================================
 
 def add_common_cli(ap: argparse.ArgumentParser, *,
-                   session_dir_default: str = "data/session-night") -> None:
+                   session_dir_default: str = "data/session") -> None:
     """三个入口共享的 CLI 参数(模式特有参数由各入口自己加)。"""
     ap.add_argument("--session-dir", type=Path, default=Path(session_dir_default),
                     help=f"会话根目录(默认 {session_dir_default}),"
