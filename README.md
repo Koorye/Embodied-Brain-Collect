@@ -108,7 +108,7 @@ pyrealsense2 / pupil_labs / pycbsdk / serial …）全部**懒加载**：装哪�
 - [docs/opencv_camera.md](docs/opencv_camera.md) —— USB 相机：idx 机制与漂移、`map_cameras.py` 人工指认、yaml 配置
 - [docs/realsense_camera.md](docs/realsense_camera.md) —— RealSense D455f：serial 绑定、`map_realsense.py` 人工指认、yaml 配置
 - [docs/emg.md](docs/emg.md) —— EMG 臂环 ×2：`map_emg.py` 逐台插入自动认口、`check_emg.py` 左右手对应检查
-- [docs/manus.md](docs/manus.md) —— MANUS 手套：Manus Core 标定、`install_manus_calib.py` 安装 `.mcal`
+- [docs/manus.md](docs/manus.md) —— MANUS 手套：Manus Core 标定、`.mcal` 手动保存到 SDK 读取目录
 - [docs/neon_eye.md](docs/neon_eye.md) —— Pupil Neon 眼动：手机 Neon app、与电脑同网段（mDNS 自动发现的前提）
 
 （待补充：EEG、ego 头环）
@@ -626,7 +626,6 @@ n/r/f/q——残缺数据的 QC 结论没有意义还拖时间）。
 | `scripts/setup/map_realsense.py` | RealSense 指认：枚举全部设备并开窗,画面烙 serial 尾号,人工确认后抄进 yaml（教程见 `docs/realsense_camera.md`） |
 | `scripts/check_emg.py` | EMG 左右手对应检查：实时双手 8 通道波形,L/R 晃动自动对照 |
 | `scripts/setup/map_emg.py` | EMG 臂环指认：逐台插入自动 diff 新 COM 口,按左右给出 yaml 填法并与当前配置比对(--list 只列串口),教程见 `docs/emg.md` |
-| `scripts/setup/install_manus_calib.py` | MANUS 标定安装：把 Manus Core 标定的 .mcal 按左右识别装进 SDK 读取目录(自动 .bak 备份/--status 状态/--dry-run 预览),教程见 `docs/manus.md` |
 | `scripts/check_vive.py` | VIVE tracker 体检：实时显示每台位置与轨迹,核对角色绑定（--list 只列出设备） |
 | `scripts/setup/configure_steamvr_null.py` | **SteamVR Null Driver 无头显配置**：输入 Steam 目录自动改两个 default.vrsettings（--dry-run 预览 / 自动 .bak / --restore 回滚 / 幂等可重跑）,教程见 `docs/vive_tracker.md` |
 | `scripts/impedance_check.py` | Curry EEG 独立阻抗体检:触发一次阻抗检测并打印每通道阻抗表(--save 存 npz) |
