@@ -633,7 +633,7 @@ n/r/f/q——残缺数据的 QC 结论没有意义还拖时间）。
 | `scripts/assist_console.py` | 辅助员控制台：stim 屏幕镜像 + 第三相机实时画面分屏显示(配置 `configs/assist_console.yaml`) |
 | `scripts/pack_daily.py` | **每日数据打包**：按日期把批次根下的会话打包成 mf-lerobot 数据集 |
 | `scripts/pack_daily_fast.py` | 同上的多进程加速版：预扫走轻量索引、流水线重叠,用法一致（另加 `--workers N`,默认 4） |
-| `scripts/pack_episode.py` | 单条打包：一个会话目录 → 一份独立数据集(方便单条送训练/回放/质检) |
+| `scripts/pack_episode.py` | 单条打包：一个会话目录 → 一份独立数据集(方便单条送训练/回放/质检);内建 fast 版加速(轻量预扫/视频截段并行重叠/无逐样本 tqdm,`--workers N`) |
 | `scripts/session_summary.py` | 现有数据汇总：产量、任务覆盖、质量问题统计 |
 | `scripts/qc.py` / `qc_report.py` | 手动 QC / 生成 qc.html |
 | `scripts/qc_batch.py` | 批量重跑 QC：对某日期的全部会话刷新 qc_report.json(可选 qc.html) |
