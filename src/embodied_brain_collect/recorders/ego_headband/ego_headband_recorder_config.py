@@ -26,7 +26,12 @@ DEFAULT_CAMERA_TOPICS = (
 )
 # Output stem per camera slot, parallel to DEFAULT_CAMERA_TOPICS: the mp4 is
 # ``{name}.mp4`` and its timestamps ``{name}_timestamps`` (no cam{i} numbering).
-DEFAULT_CAMERA_NAMES = ("left", "right", "bleft", "bright")
+DEFAULT_CAMERA_NAMES = (
+    "left", 
+    "right", 
+    "bleft", 
+    "bright",
+)
 DEFAULT_IMU_TOPICS = (
     "/imu_data_raw",
     "/imu_data_filterd",      # device spelling (as the ROS topic is published)

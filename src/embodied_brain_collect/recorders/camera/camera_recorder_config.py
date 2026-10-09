@@ -21,7 +21,7 @@ class OpencvCameraConfig(CameraRecorderConfig):
     # 辅助员控制台的实时预览:把降采样 JPEG 经 UDP 推到本机端口
     # (session/assist_console 消费)。0 = 关闭。
     preview_port: int = 0
-    preview_hz: float = 12.0   # 预览帧率上限(采集帧率之上无意义)
+    preview_hz: float = 30.0   # 预览帧率上限(采集帧率之上无意义)
     preview_width: int = 640   # 预览缩放宽度(等比缩高)
 
 
