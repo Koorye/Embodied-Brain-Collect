@@ -11,6 +11,9 @@ Speaks the device's "wired ROS TCP" protocol (reference client:
     server -> {"kind":"time_probe","id":i,"t1":ns}     (xN; client must reply)
     client -> {"kind":"time_reply","id":i,"t2":ns,"t3":ns}
     server -> {"kind":"sync_result","synced":bool,...}
+    server -> {"kind":"calibration_file","name":..,"size":..,"sha256":..} + YAML bytes (x3)
+    server -> {"kind":"calibration_end","version":1,"files":[..]}
+    client -> {"kind":"calibration_ack","version":1,"files":[..]} (after verified save)
     server -> {"kind":"stream_start","topics":{name:type},"missing_publishers":[..]}
     server -> {"kind":"data","topic":..,"header":{..},...} + payload   (repeating)
     server -> {"kind":"status"|"error",...}
@@ -42,6 +45,7 @@ and both IMUs survive the wait and record once the session actually starts.
 
 import ctypes
 import json
+from pathlib import Path
 import queue
 import socket
 import struct
@@ -51,6 +55,7 @@ import time
 import numpy as np
 
 from .base_ego_headband_recorder import BaseEgoHeadbandRecorder
+from .calibration_receiver import CAPABILITY as CALIBRATION_CAPABILITY, CalibrationReceiver
 from .ego_headband_recorder_config import EgoHeadbandRecorderConfig
 from .ffmpeg_jpeg_writer import _probe_gpu_transcode
 
@@ -131,6 +136,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         # 期间就有流量,基线一直被喂到录制开始
         self._last_rx_perf = time.perf_counter()
         self._audio_available = False
+        self._calibration_receiver = CalibrationReceiver()
         self._decode_queues = {}
         self._decode_threads = {}
         self._decode_stop = threading.Event()
@@ -151,6 +157,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self.__dict__.setdefault("_audio_writer", None)
         self.__dict__.setdefault("_audio_error", "")
         self.__dict__.setdefault("_audio_available", False)
+        self.__dict__.setdefault("_calibration_receiver", CalibrationReceiver())
         self.__dict__.setdefault("_decode_queues", {})
         self.__dict__.setdefault("_decode_threads", {})
         self.__dict__.setdefault("_decode_stop", threading.Event())
@@ -160,6 +167,11 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
 
     def _open(self) -> bool:
         cfg = self.config
+        # Every connection needs a new transfer; never reuse a previous handshake.
+        self._calibration_receiver = CalibrationReceiver()
+        self._rx.clear()
+        for key in ("calibration_filenames", "calibration_sha256", "calibration_relative_dir"):
+            self._static.pop(key, None)
         # GPU probe(探测 mjpeg_cuvid->hevc_nvenc 是否可用,进程级缓存)原本
         # 在第一个 commit 帧进写线程时才跑,四个写线程全部堵在锁上等它 ——
         # 冷启动停顿叠加写队列溢出,就是 session 开头掉帧的主因之一。提前到
@@ -182,11 +194,12 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
 
         try:
             self._send({"kind": "hello", "version": _VERSION,
-                        "capabilities": ["pcm_audio_v1"] if cfg.audio_enabled else []})
+                        "capabilities": [CALIBRATION_CAPABILITY] +
+                        (["pcm_audio_v1"] if cfg.audio_enabled else [])})
             if not self._handshake():
                 self._close_sock()
                 return False
-        except (OSError, EOFError, ValueError) as exc:
+        except (OSError, EOFError, ValueError, RuntimeError) as exc:
             self._open_error = f"handshake failed — {type(exc).__name__}: {exc}"
             self._log(f"[ego_headband:net] open failed — {self._open_error}")
             self._close_sock()
@@ -207,6 +220,14 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         # recording (idempotent — _poll guards too, for the live harness that
         # polls directly without ever entering _record).
         self._stop_drain()
+        try:
+            if not self.config.session_dir:
+                raise ValueError("recording requires a session directory with saved headband calibrations")
+            self._calibration_receiver.verify_saved(
+                Path(self.config.session_dir) / self.output_dir)
+        except (OSError, ValueError):
+            self._close()
+            raise
         super()._record()
 
     def _close(self) -> None:
@@ -317,14 +338,14 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         """Reply to time probes until the server opens the stream."""
         cfg = self.config
         budget = max(cfg.connect_timeout, (cfg.open_timeout or 30.0) - 2.0)
-        deadline = time.time() + budget
+        deadline = time.monotonic() + budget
         while True:
-            remaining = deadline - time.time()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self._open_error = "handshake timed out before stream_start"
                 self._log(f"[ego_headband:net] open failed — {self._open_error}")
                 return False
-            meta, _ = self._recv_frame(remaining)
+            meta, payload = self._recv_frame(remaining)
             kind = meta.get("kind")
             if kind == "time_probe":
                 self._send({"kind": "time_reply", "id": meta.get("id"),
@@ -339,7 +360,24 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                     self._log(f"[ego_headband:net] open failed — "
                               f"{self._open_error}")
                     return False
+            elif kind == "calibration_file":
+                self._calibration_receiver.add_file(meta, payload)
+            elif kind == "calibration_end":
+                output_dir = (Path(cfg.session_dir) / self.output_dir
+                              if cfg.session_dir else None)
+                entries = self._calibration_receiver.finish(meta, payload, output_dir)
+                # Static metadata survives the launcher's commit/preroll reset.
+                self._static.update(
+                    calibration_filenames=np.asarray([e["name"] for e in entries]),
+                    calibration_sha256=np.asarray([e["sha256"] for e in entries]),
+                    calibration_relative_dir=np.asarray("calibrations"),
+                )
+                self._send({"kind": "calibration_ack", "version": 1, "files": entries})
+                location = str(output_dir / "calibrations") if output_dir else "memory (preview only)"
+                self._log(f"[ego_headband:net] verified 3 calibration files: {location}")
             elif kind == "stream_start":
+                if not self._calibration_receiver.complete:
+                    raise ValueError("headband calibrations missing; update wired_tcp server before recording")
                 self._on_stream_start(meta)
                 if cfg.audio_enabled and cfg.require_audio and not self._audio_available:
                     self._open_error = "server did not advertise requested microphone audio/PCM"
@@ -349,7 +387,9 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 self._open_error = f"server error: {meta.get('message')}"
                 self._log(f"[ego_headband:net] open failed — {self._open_error}")
                 return False
-            # 'status' or anything else before stream_start: keep waiting.
+            elif kind == "data":
+                raise ValueError("sensor data arrived before calibration/stream_start handshake")
+            # Status messages before stream_start carry no recorded data.
 
     def _on_stream_start(self, meta: dict) -> None:
         self._topics = dict(meta.get("topics") or {})
@@ -419,18 +459,23 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         if len(buf) < total:
             return None
         meta = json.loads(bytes(buf[_HEADER.size:_HEADER.size + m]))
+        if not isinstance(meta, dict):
+            raise ValueError("metadata must be an object")
         payload = bytes(buf[_HEADER.size + m:total])
         del buf[:total]
         return meta, payload
 
     def _recv_frame(self, timeout: float):
         """Block until one whole frame arrives (handshake only)."""
-        deadline = time.time() + timeout
+        deadline = time.monotonic() + timeout
         while True:
             frame = self._take_frame()
             if frame is not None:
                 return frame
-            self._recv(max(0.01, deadline - time.time()))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("headband handshake timed out waiting for a complete frame")
+            self._recv(remaining)
 
     # ---- recording poll -------------------------------------------------
 
