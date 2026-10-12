@@ -1522,6 +1522,53 @@ def write_qc_meta(out: Path, sessions: list[dict]) -> None:
     print(f"[meta] qc_reports.jsonl: {n_with}/{len(lines)} 个 episode 有报告")
 
 
+def load_headband_calibration(session_dir: Path) -> dict | None:
+    """头环标定参数:录制时设备端逐字节下发、sha256 校验过的标定 YAML
+    (相机内参 camchain / 相机-IMU 外参),存于
+    ``ego_headband/calibrations/``。
+
+    返回 ``{去扩展名文件名: yaml.safe_load 解析后的标定参数}``(个别文件
+    解析失败时保留原文),标定随数据集走,下游用鱼眼/头环 IMU 时不必
+    回源会话目录。目录缺失(旧录制端 / 未下发标定)返回 None。
+    """
+    cal_dir = session_dir / "ego_headband" / "calibrations"
+    if not cal_dir.is_dir():
+        return None
+    out: dict = {}
+    for p in sorted(cal_dir.glob("*.yaml")):
+        text = p.read_text(encoding="utf-8")
+        try:
+            out[p.stem] = yaml.safe_load(text)
+        except yaml.YAMLError:
+            out[p.stem] = text
+    return out or None
+
+
+def write_calibrations_meta(out: Path, sessions: list[dict]) -> None:
+    """把每个 episode 的头环标定写进 meta/calibrations.jsonl。
+
+    一行一个 episode(episode_index 与数据集一致,与 qc_reports.jsonl /
+    collect_info.jsonl 同口径):``session`` 为源会话目录名,
+    ``calibrations.ego_headband`` 为 ``{标定名: 解析后的标定参数}``
+    (见 load_headband_calibration);会话没有标定时该键为 null。
+    """
+    lines = []
+    for i, info in enumerate(sessions):
+        lines.append(json.dumps({
+            "episode_index": i,
+            "session": info["dir"].name,
+            "calibrations": {"ego_headband":
+                             load_headband_calibration(info["dir"])},
+        }, ensure_ascii=False))
+    meta = out / "meta"
+    meta.mkdir(parents=True, exist_ok=True)
+    (meta / "calibrations.jsonl").write_text("\n".join(lines) + "\n",
+                                             encoding="utf-8")
+    n_with = sum(1 for line in lines
+                 if json.loads(line)["calibrations"]["ego_headband"] is not None)
+    print(f"[meta] calibrations.jsonl: {n_with}/{len(lines)} 个 episode 有标定")
+
+
 def write_collect_meta(out: Path, sessions: list[dict]) -> None:
     """数据集的元数据边车:所有额外信息逐 episode 写 meta/collect_info.jsonl。
 
@@ -1859,6 +1906,8 @@ def main(argv: list[str] | None = None) -> int:
     write_qc_meta(args.out, sessions)
     # meta 附上每个 episode 的采集信息(session.yaml 顶层键 + CLI 覆盖快照)
     write_collect_meta(args.out, sessions)
+    # 头环标定快照逐 episode 落 meta/calibrations.jsonl
+    write_calibrations_meta(args.out, sessions)
 
     print(f"[done] {ds.meta.total_episodes} episodes, "
           f"{ds.meta.total_frames} frames → {args.out}")

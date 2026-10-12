@@ -64,7 +64,8 @@ from pack_daily import (  # noqa: E402
     _is_constant_stream, _window_mask, cut_video_aligned, discover_video_slots,
     filter_meta_status, filter_qc_errors, load_marker_window,
     load_microphone_chunks, load_microphone_index, load_parquet_streams,
-    load_task_label, write_collect_meta, write_qc_meta,
+    load_task_label, write_calibrations_meta, write_collect_meta,
+    write_qc_meta,
 )
 from pack_daily_fast import (  # noqa: E402
     _build_specs, _default_workers, _probe_session_full, _probe_session_index,
@@ -472,6 +473,8 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
 
     write_qc_meta(out, [info])
     write_collect_meta(out, [info])
+    # 头环标定快照逐 episode 落 meta/calibrations.jsonl
+    write_calibrations_meta(out, [info])
 
     print(f"[done] 1 episode, {ds.meta.total_frames} frames → {out} "
           f"(用时 {time.perf_counter() - t_start:.1f}s)")

@@ -53,7 +53,8 @@ from pack_daily import (  # noqa: E402
     filter_qc_errors, filter_meta_status, find_sessions, load_marker_window,
     load_microphone_index, load_parquet_streams, load_stream_index,
     load_task_label, make_master_timeline, probe_video_shape,
-    rename_out_by_span, video_feature_key, write_collect_meta, write_qc_meta,
+    rename_out_by_span, video_feature_key, write_calibrations_meta,
+    write_collect_meta, write_qc_meta,
 )
 
 # mf_lerobot(连带 torch,冷启动 10s+)不进模块级 import:本模块会被
@@ -605,6 +606,8 @@ def main(argv: list[str] | None = None) -> int:
             write_qc_meta(args.out, sessions)
             # meta 附上每个 episode 的采集信息(源会话 meta.yaml 的 collect)
             write_collect_meta(args.out, sessions)
+            # meta 附上每个 episode 的头环标定快照(清单 + YAML 原文)
+            write_calibrations_meta(args.out, sessions)
 
     print(f"[done] {ds.meta.total_episodes} episodes, "
           f"{ds.meta.total_frames} frames → {args.out}")
