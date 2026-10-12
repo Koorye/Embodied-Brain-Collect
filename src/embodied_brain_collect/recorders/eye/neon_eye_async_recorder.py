@@ -577,14 +577,16 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 out_dir = Path(self.config.session_dir) / self.output_dir
                 out_dir.mkdir(parents=True, exist_ok=True)
                 self._out_mp4 = out_dir / "eye.mp4"
-                # Frame-exact libx265 (bframes=0, CFR, keyint=fps) — same
-                # FFmpegWriter the camera recorders use.  Frames are BGR
-                # (f.bgr_buffer()).
+                # Frame-exact HEVC (bframes=0, CFR, keyint=fps) — same
+                # FFmpegWriter the camera recorders use, hevc_nvenc when
+                # available.  Frames are BGR (f.bgr_buffer()).
                 self._writer = FFmpegWriter(
                     self._out_mp4, w, h, 30.0,
                     input_pix_fmt="bgr24", output_pix_fmt="yuv420p",
-                    crf=int(self.config.crf), preset=str(self.config.preset))
-                print(f"\n[eye:neon] scene mp4 -> {self._out_mp4} ({w}x{h})")
+                    crf=int(self.config.crf), preset=str(self.config.preset),
+                    encoder=str(getattr(self.config, "encoder", "auto")))
+                print(f"\n[eye:neon] scene mp4 -> {self._out_mp4} "
+                      f"({w}x{h}, {self._writer.encoder_used})")
             await loop.run_in_executor(None, self._writer.write, img)
             self._acc("scene_timestamps", ts)
             queue.task_done()

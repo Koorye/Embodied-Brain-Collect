@@ -6,8 +6,12 @@ from ..base import BaseRecorderConfig
 @dataclass
 class CameraRecorderConfig(BaseRecorderConfig):
     """Base camera config.  Subclass for specific hardware."""
-    crf: int = 23        # libx265 quality (lower = better / bigger)
-    preset: str = "medium"  # libx265 speed preset
+    crf: int = 23        # quality (x265 crf / nvenc cq; lower = better / bigger)
+    preset: str = "medium"  # x265 speed preset (maps to nvenc p1-p7)
+    encoder: str = "auto"   # "auto"=hevc_nvenc if available, else libx265;
+                            # "gpu"/"nvenc"=force GPU (warn+fallback if absent);
+                            # "cpu"=libx265. 16-bit depth stays libx265 either
+                            # way (nvenc has no 12-bit gray mode).
 
 
 @dataclass

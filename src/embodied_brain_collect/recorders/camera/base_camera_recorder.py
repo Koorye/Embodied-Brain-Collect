@@ -2,8 +2,9 @@
 
 Frame writing is decoupled from the poll loop: concrete recorders just call
 ``arr_video(key, ts, arr)`` per frame.  A per-stream bounded queue + a
-dedicated writer thread turn frames into ``{key}.mp4`` (libx265 HEVC via the
-shared FFmpegWriter — 8-bit color as yuv420p, 16-bit depth as gray12le)
+dedicated writer thread turn frames into ``{key}.mp4`` (HEVC via the shared FFmpegWriter — hevc_nvenc on the GPU when
+available, libx265 otherwise; 8-bit color as yuv420p, 16-bit depth as
+gray12le always on libx265)
 *without ever blocking the poll thread on disk I/O*.
 
 Timestamps are recorded only for frames that are actually written, so
@@ -125,8 +126,10 @@ class BaseCameraRecorder(BaseRecorder):
         w = FFmpegWriter(
             path, width, h, fps,
             input_pix_fmt=inp, output_pix_fmt=outp,
-            crf=int(self.config.crf), preset=str(self.config.preset))
-        self._log(f"[{self.name}] {path.stem} mp4 -> {path} ({width}x{h})")
+            crf=int(self.config.crf), preset=str(self.config.preset),
+            encoder=str(getattr(self.config, "encoder", "auto")))
+        self._log(f"[{self.name}] {path.stem} mp4 -> {path} "
+                  f"({width}x{h}, {w.encoder_used})")
         return w
 
     def _recording_signal(self) -> int:
