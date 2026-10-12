@@ -14,7 +14,8 @@ yaml 没配的 kind 一律不碰 —— 不扫全量 USB 索引,也不枚举 SDK
   * realsense_camera —— 配了 serial 精确开;没配与 recorder 同款,默认第一台
   * depthai_camera —— 配了 mxid 精确开;没配与 recorder 同款,默认第一台
   * net_ego_headband —— 连 yaml ego_headband 槽位的 host/port,走与
-    net_ego_headband_recorder 相同的握手协议;四路鱼眼各占一格
+    net_ego_headband_recorder 相同的握手协议;每次连接校验三个标定文件,
+    预览仅保存在内存,不生成录制 session;四路鱼眼各占一格
 
 打开顺序 realsense/depthai 在前、opencv 收尾:RealSense 的彩色头在
 Windows 上就是一个可枚举的 UVC 摄像头,若 DSHOW 先抢到它,librealsense
@@ -23,7 +24,7 @@ Windows 上就是一个可枚举的 UVC 摄像头,若 DSHOW 先抢到它,libreal
 
 显示时所有画面拼成一张网格大图(单窗口),每格标注来源、分辨率,以及
 recorders.yaml 里对应的槽位名(对不上时显示 no-slot,配重了显示 a+b)。
-按 q / Esc 退出;开不开画面对采集程序毫无影响,放心开着。
+按 q / Esc 退出;请退出体检后再开始正式采集,释放设备连接。
 
 无法导入的 SDK 会标注「未安装」——那类相机在此机器上本来就录不了。
 """
@@ -187,7 +188,8 @@ class _HeadbandFeed:
 
     与 net_ego_headband_recorder 说同一套协议(帧格式常量、时钟回复函数
     直接从 recorder 模块导入,协议变了这边跟着变):hello → 回 time_probe
-    → stream_start 后,常驻一个读线程排空 socket,每路相机只保留最新一帧
+    → 接收并校验三个标定文件 → calibration_ack → stream_start 后,
+    常驻一个读线程排空 socket,每路相机只保留最新一帧
     的 JPEG 解码结果 —— 拼屏循环按需来取,不落盘、不转码。
     """
 
@@ -199,6 +201,7 @@ class _HeadbandFeed:
         self.synced: bool | None = None    # 设备时钟同步结果(仅展示用)
         self.advertised: dict = {}         # stream_start 报告的全部 topic
         self.error = ""
+        self.calibrations: list[dict] = []  # 本次连接校验通过的标定清单
         self._net = None                   # net_ego_headband_recorder 模块
         self._sock: socket.socket | None = None
         self._rx = bytearray()
@@ -210,54 +213,79 @@ class _HeadbandFeed:
     # ---- 握手(与 recorder 的 _handshake 同流程,不要求同步成功)----
 
     def open(self) -> bool:
+        self.close()
+        if self._thread is not None and self._thread.is_alive():
+            self.error = "上一次预览线程尚未退出,请稍后重试"
+            return False
+        self._stop.clear()
+        self._rx.clear()
+        with self._lock:
+            self._latest.clear()
+        self.error = ""
+        self.synced = None
+        self.advertised = {}
+        self.calibrations = []
         try:
             from embodied_brain_collect.recorders.ego_headband import \
                 net_ego_headband_recorder as net
+            from embodied_brain_collect.recorders.ego_headband.calibration_receiver import (
+                CAPABILITY, CalibrationReceiver,
+            )
         except Exception as exc:
             self.error = f"recorder 模块导入失败 — {exc}"
             return False
         self._net = net
+        calibrations = CalibrationReceiver()  # 每次连接重新接收,不复用旧标定
         try:
             self._sock = socket.create_connection(
                 (self.host, self.port), timeout=self.connect_timeout)
             self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            # 不带 capabilities:体检只要画面,不跟设备谈麦克风
+            # 必须支持标定传输;预览不请求麦克风。
             self._send({"kind": "hello", "version": net._VERSION,
-                        "capabilities": []})
+                        "capabilities": [CAPABILITY]})
         except OSError as exc:
             self.error = f"tcp://{self.host}:{self.port} — {exc}"
             self._close_sock()
             return False
-        deadline = time.time() + self.connect_timeout
+        deadline = time.monotonic() + self.connect_timeout
         while True:
-            remaining = deadline - time.time()
+            remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self.error = "握手超时(没等到 stream_start)"
                 self._close_sock()
                 return False
             try:
-                meta, _ = self._recv_frame(remaining)
+                meta, payload = self._recv_frame(remaining)
+                kind = meta.get("kind")
+                if kind == "time_probe":
+                    self._send({"kind": "time_reply", "id": meta.get("id"),
+                                "t2": net._wall_ns(), "t3": net._wall_ns()})
+                elif kind == "sync_result":
+                    self.synced = bool(meta.get("synced"))
+                elif kind == "calibration_file":
+                    calibrations.add_file(meta, payload)
+                elif kind == "calibration_end":
+                    entries = calibrations.finish(meta, payload)
+                    self._send({"kind": "calibration_ack", "version": 1,
+                                "files": entries})
+                    self.calibrations = entries
+                elif kind == "stream_start":
+                    if not calibrations.complete:
+                        raise ValueError("缺少完整标定文件,请检查头环 TCP 服务版本")
+                    topics = meta.get("topics") or {}
+                    if not isinstance(topics, dict):
+                        raise ValueError("invalid stream_start topics")
+                    self.advertised = dict(topics)
+                    break
+                elif kind == "error":
+                    raise ValueError(f"server error: {meta.get('message')}")
+                elif kind == "data":
+                    raise ValueError("sensor data arrived before calibration/stream_start handshake")
+                # 'status' 或其他:继续等。
             except (OSError, EOFError, ValueError) as exc:
                 self.error = f"握手失败 — {type(exc).__name__}: {exc}"
                 self._close_sock()
                 return False
-            kind = meta.get("kind")
-            if kind == "time_probe":
-                try:
-                    self._send({"kind": "time_reply", "id": meta.get("id"),
-                                "t2": net._wall_ns(), "t3": net._wall_ns()})
-                except OSError:
-                    pass
-            elif kind == "sync_result":
-                self.synced = bool(meta.get("synced"))
-            elif kind == "stream_start":
-                self.advertised = dict(meta.get("topics") or {})
-                break
-            elif kind == "error":
-                self.error = f"server error: {meta.get('message')}"
-                self._close_sock()
-                return False
-            # 'status' 或其他:继续等。
         self._thread = threading.Thread(
             target=self._reader_loop, name="headband-check-reader", daemon=True)
         self._thread.start()
@@ -266,6 +294,14 @@ class _HeadbandFeed:
     # ---- 常驻读线程:排空 socket,相机 topic 只留最新解码帧 ----
 
     def _reader_loop(self) -> None:
+        try:
+            self._read_stream()
+        except Exception as exc:
+            self.error = self.error or f"读流失败 — {type(exc).__name__}: {exc}"
+        finally:
+            self._close_sock()
+
+    def _read_stream(self) -> None:
         import cv2
         import numpy as np
         net = self._net
@@ -273,7 +309,8 @@ class _HeadbandFeed:
         while not self._stop.is_set():
             got = self._recv(0.2)
             if got is None:
-                self.error = self.error or "连接已断开"
+                if not self._stop.is_set():
+                    self.error = self.error or "连接已断开"
                 return
             if got:
                 for _ in range(net._DRAIN_MAX):
@@ -289,7 +326,10 @@ class _HeadbandFeed:
                     break
                 meta, payload = frame
                 kind = meta.get("kind")
-                if kind == "time_probe":
+                if kind == "error":
+                    self.error = f"server error: {meta.get('message')}"
+                    return
+                elif kind == "time_probe":
                     # 服务器可能中途重新对时,照实回
                     try:
                         self._send({"kind": "time_reply", "id": meta.get("id"),
@@ -313,15 +353,34 @@ class _HeadbandFeed:
     # ---- 拼屏取帧 / 关闭 ----
 
     def read(self, topic: str):
+        if self.error or self._stop.is_set():
+            return None
         with self._lock:
             return self._latest.get(topic)
 
     def close(self) -> None:
         self._stop.set()
-        t, self._thread = self._thread, None
+        # shutdown 先唤醒阻塞接收,线程退出后才能安全复用 feed。
+        sock = self._sock
+        if sock is not None:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+        t = self._thread
         if t is not None:
             t.join(timeout=2.0)
+            if not t.is_alive():
+                self._thread = None
         self._close_sock()
+
+    def _close_sock(self) -> None:
+        sock, self._sock = self._sock, None
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
 
     # ---- 帧格式(与 recorder 同一套,常量从 recorder 模块取)----
 
@@ -331,17 +390,19 @@ class _HeadbandFeed:
         self._sock.sendall(self._net._HEADER.pack(len(raw), 0) + raw)
 
     def _recv(self, timeout: float):
-        if self._sock is None:
+        sock = self._sock
+        if sock is None:
             return None
         try:
-            self._sock.settimeout(timeout)
-            chunk = self._sock.recv(65536)
+            sock.settimeout(timeout)
+            chunk = sock.recv(65536)
         except (socket.timeout, BlockingIOError):
             return False
         except OSError:
             return None
         if not chunk:
-            self.error = self.error or "设备关闭了连接"
+            if not self._stop.is_set():
+                self.error = self.error or "设备关闭了连接"
             return None
         self._rx.extend(chunk)
         return True
@@ -358,17 +419,22 @@ class _HeadbandFeed:
         if len(buf) < total:
             return None
         meta = json.loads(bytes(buf[header.size:header.size + m]))
+        if not isinstance(meta, dict):
+            raise ValueError("frame metadata must be a JSON object")
         payload = bytes(buf[header.size + m:total])
         del buf[:total]
         return meta, payload
 
     def _recv_frame(self, timeout: float):
-        deadline = time.time() + timeout
+        deadline = time.monotonic() + timeout
         while True:
             frame = self._take_frame()
             if frame is not None:
                 return frame
-            r = self._recv(max(0.01, deadline - time.time()))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("handshake timed out before a complete frame")
+            r = self._recv(remaining)
             if r is None:
                 raise EOFError("connection ended during handshake")
 
@@ -410,6 +476,7 @@ def _probe_headband() -> list[Source]:
     if not feed.open():
         print(f"  [headband] {feed.error}")
         return []
+    print(f"  [headband] 已校验 {len(feed.calibrations)} 个标定文件(仅预览,保存在内存)")
 
     out = []
     for i, topic in enumerate(topics):
@@ -637,7 +704,7 @@ def show(sources: list[Source], seconds: float, cv2) -> None:
                 misses[lbl] = 0
                 reported[lbl] = False
             else:
-                misses[lbl] += 1      # poll 空拍是常态(帧率<循环率),不算失败
+                misses[lbl] = misses.get(lbl, 0) + 1  # poll 空拍不算失败
             show_img = last.get(lbl)
             if show_img is not None and misses[lbl] < 30:
                 h, w = show_img.shape[:2]
@@ -652,8 +719,10 @@ def show(sources: list[Source], seconds: float, cv2) -> None:
                 tag, color = f"{lbl}  {src.res[0]}x{src.res[1]}{fps}", \
                     (255, 255, 255)
             else:
-                if not reported[lbl]:
-                    print(f"  {lbl}: 读帧失败,持续重试 ...")
+                if not reported.get(lbl, False):
+                    error = (src.extra["feed"].error
+                             if src.kind == "headband" else "")
+                    print(f"  {lbl}: {error or '读帧失败,持续重试 ...'}")
                     reported[lbl] = True
                 cv2.putText(canvas, f"{lbl}  no frame",
                             (x0 + 16, y0 + cell_h // 2),
@@ -737,6 +806,7 @@ def main(argv: list[str] | None = None) -> int:
                       f"(没接 / 被占用 / DSHOW 枚举抖动)")
 
     if args.list:
+        release(sources)
         return 0
 
     import cv2
