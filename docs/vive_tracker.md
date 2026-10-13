@@ -153,6 +153,14 @@ python scripts/check_vive.py                 # 开窗实时显示位置与轨迹
 标签不动或动的是 `unbound` 那台，说明 `role_serial_map` 绑错或没绑，当场暴露。
 yaml 里绑了但没连上的设备会红字列在窗口顶部。
 
+窗口是**左手系 3D 视图**：X 向右、Y 向上、Z 向屏幕里（深度）。地面网格
+（0.5m 起，随场景自适应）与原点 XYZ 轴（R/G/B）给出空间参照；每台 tracker
+画彩色轨迹、到地面的垂线（高度参考）和 RGB 三线**姿态 gizmo**（设备 XYZ 轴
+旋转到世界后的方向，转动 tracker 时应跟着转），底部状态栏同步显示
+`(x,y,z|r,p,y)`——rpy 与 `position.npz` 的 `euler_rpy_deg` 同一换算，佩戴
+方向/朝向对不对在这里核对。鼠标拖拽旋转视角，滚轮或 `+`/`-` 缩放，`r` 复位
+取景，`q`/`Esc` 退出。
+
 **DexCap 原版验证**：DexCap Hardware Tutorial 提供 `vive_test.py` 验证流程，
 读到的位姿应随 tracker 移动连续变化。
 

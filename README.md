@@ -623,7 +623,7 @@ n/r/f/q——残缺数据的 QC 结论没有意义还拖时间）。
 | `scripts/setup/map_realsense.py` | RealSense 指认：枚举全部设备并开窗,画面烙 serial 尾号,人工确认后抄进 yaml（教程见 `docs/realsense_camera.md`） |
 | `scripts/check_emg.py` | EMG 左右手对应检查：实时双手 8 通道波形,L/R 晃动自动对照 |
 | `scripts/setup/map_emg.py` | EMG 臂环指认：逐台插入自动 diff 新 COM 口,按左右给出 yaml 填法并与当前配置比对(--list 只列串口),教程见 `docs/emg.md` |
-| `scripts/check_vive.py` | VIVE tracker 体检：实时显示每台位置与轨迹,核对角色绑定（--list 只列出设备） |
+| `scripts/check_vive.py` | VIVE tracker 体检：左手系 3D 实时显示每台位置/姿态/轨迹,核对角色绑定（--list 只列出设备） |
 | `scripts/setup/configure_steamvr_null.py` | **SteamVR Null Driver 无头显配置**：输入 Steam 目录自动改两个 default.vrsettings（--dry-run 预览 / 自动 .bak / --restore 回滚 / 幂等可重跑）,教程见 `docs/vive_tracker.md` |
 | `scripts/assist_console.py` | 辅助员控制台：stim 屏幕镜像 + 第三相机实时画面分屏显示(配置 `configs/assist_console.yaml`) |
 | `scripts/pack_daily.py` | **每日数据打包**：按日期把批次根下的会话打包成 mf-lerobot 数据集 |
