@@ -1,5 +1,36 @@
 # 修改记录
 
+## 1.5.3 — 2026-10-15
+
+### 开录首端 TimestampGap 根治:写盘 worker 预热就绪 → 才 commit → 才 RUN_START
+
+* **病灶**(2026-10-15 会话 17-46-37 定位):mp4 写盘线程与 ffmpeg 进程
+  在 commit 后第一帧才懒构造 —— FFmpegWriter 构造(nvenc 探测 + 进程
+  拉起)实测 ~0.8s,期间帧以 30fps 涌进 8 帧上限的写队列,溢出丢最老
+  帧;而 commit→RUN_START 只有 ~0.6s(stim 冷启动),整个落进冷启动
+  空窗:cam_left_wrist/cam_right_wrist/eye scene 各缺首端 ~0.5s、
+  cam_third 开头 0.52s 空洞,每路实丢 ~30 帧,QC 报 4 条首端
+  TimestampGap ERROR(误指向"拔插 USB/网线"的排查方向,实为软件时序,
+  这也是 eye 反复 11 次失败的原因)。
+* **相机基类暖管**(``_enqueue``/``_start_write_worker``/``_write_worker``):
+  预热期第一帧只用来确定 shape/像素格式,先构造 writer、不写帧;commit
+  前管线全热,commit 后第一帧即写。覆盖三路 USB 相机、头环(其 1.5.2
+  的 64 帧大队列从"吸掉突发"升级为"没有突发")、depthai/realsense。
+* **eye scene 同款暖管**(`neon_eye_async``):standby 首帧解码取分辨率、
+  executor 里构造 FFmpegWriter;``_scene_writer`` 兜底路径保留。
+* **确认闸升级**(``BaseRecorder._ready_to_commit`` + launcher
+  ``_wait_data_flowing``):数据在流动之外,还要管线就绪才放行 —— 全部
+  slot 就绪 → 广播 commit → stim 起跑发 RUN_START,顺序有保证;超时
+  报"写盘管线未就绪"而非笼统的"缓冲无新增样本"。
+* **abort 路径不留空 mp4**(相机 ``discard_recording`` / eye
+  ``_abort_scene_writer``+``_teardown``):预热拉起的 writer 收掉、0 帧
+  容器删除,否则 ``has_any_data`` 会把空录制误判为"有数据";discard 后
+  继续投喂的帧直接丢弃,不再重启写盘线程。
+* **回归测试** ``tests/camera/test_warm_writer.py``:暖管先于 commit、
+  commit 后首帧立即写掉(端到端实测:相机首帧与非视频流起步差 3ms,
+  零丢帧,mp4 包数 == 时间戳数)、discard 清理、确认闸阻塞语义、
+  eye 就绪闸。dummy 全链路 launch() 验证通过。
+
 ## 1.5.2 — 2026-09-30
 
 ### QC 视频检查:关键帧采样 + 模态并发

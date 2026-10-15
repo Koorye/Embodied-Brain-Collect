@@ -62,13 +62,17 @@ class BaseCameraRecorder(BaseRecorder):
         design — the recording must never fall behind real time."""
         return 8
 
-    def _start_write_worker(self, key: str) -> None:
+    def _start_write_worker(self, key: str, warm_data=None) -> None:
+        """启动 ``key`` 的写盘线程。``warm_data`` 非 None 时(该流第一帧),
+        线程先按这帧的 shape/像素格式把 FFmpegWriter(nvenc 探测 + ffmpeg
+        进程拉起,本机实测 ~0.8s)构造好,**不写这一帧** —— 预热期暖管,
+        commit 后第一帧即写,不再有冷启动空窗。"""
         if key in self._write_threads:
             return
         q = self._write_queues.setdefault(
             key, queue.Queue(maxsize=self._write_queue_size()))
         t = threading.Thread(
-            target=self._write_worker, args=(key, q),
+            target=self._write_worker, args=(key, q, warm_data),
             name=f"{self.name}-{key}-writer", daemon=True)
         self._write_threads[key] = t
         t.start()
@@ -81,7 +85,15 @@ class BaseCameraRecorder(BaseRecorder):
                      or getattr(self.config, "cam_fps_hint", None)
                      or _FPS_FALLBACK)
 
-    def _write_worker(self, key: str, q: queue.Queue) -> None:
+    def _write_worker(self, key: str, q: queue.Queue,
+                      warm_data=None) -> None:
+        # 暖管:预热期第一帧只用来确定 shape/像素格式,先构造 writer、
+        # 不写帧 —— 构造失败按写失败处理(_write_failed → _enqueue 抛错)。
+        if warm_data is not None:
+            try:
+                self._build_writer(key, warm_data)
+            except (OSError, RuntimeError) as exc:
+                self._warn_write(key, exc)
         while True:
             item = q.get()
             if item is None:  # shutdown sentinel
@@ -90,12 +102,7 @@ class BaseCameraRecorder(BaseRecorder):
             try:
                 w = self._video_writers.get(key)
                 if w is None:
-                    out_dir = Path(self.config.session_dir) / self.output_dir
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    path = out_dir / f"{key}.mp4"
-                    w = self._make_writer(path, self._write_fps(), data)
-                    self._video_writers[key] = w
-                    self._video_paths[key] = path
+                    w = self._build_writer(key, data)
                 w.write(data)
                 # Timestamps ONLY for frames actually written -> 1:1 with
                 # the container's frame indices even when frames drop.
@@ -105,6 +112,16 @@ class BaseCameraRecorder(BaseRecorder):
                     self._last_shapes[key] = data.shape
             except (OSError, RuntimeError) as exc:
                 self._warn_write(key, exc)
+
+    def _build_writer(self, key: str, data) -> FFmpegWriter:
+        """按 ``data`` 的 shape/格式构造并登记 ``key`` 的 mp4 writer。"""
+        out_dir = Path(self.config.session_dir) / self.output_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / f"{key}.mp4"
+        w = self._make_writer(path, self._write_fps(), data)
+        self._video_writers[key] = w
+        self._video_paths[key] = path
+        return w
 
     def _make_writer(self, path: Path, fps: float, data: np.ndarray):
         """Build the mp4 writer for a stream's first frame.
@@ -138,6 +155,25 @@ class BaseCameraRecorder(BaseRecorder):
         commit 前帧也计入(证明数据在流动)。"""
         return self._frames_enqueued + self._frames_precommit
 
+    def _ready_to_commit(self) -> bool:
+        """所有已启动的写盘线程都完成了 writer 构造(ffmpeg 已拉起、
+        nvenc 探测已缓存)。launcher 的确认阶段等它翻真才广播 commit,
+        保证 commit→RUN_START 之间没有冷启动空窗。"""
+        return all(key in self._video_writers for key in self._write_threads)
+
+    def discard_recording(self) -> None:
+        """abort 路径:预热期可能已经暖管拉起了 ffmpeg —— 收掉写盘线程,
+        删掉 0 帧 mp4。否则中止的 session 目录里留着空 mp4,has_any_data
+        会把"空录制"误判成"有数据",汇总口径失真。"""
+        super().discard_recording()      # _save_enabled = False(此后 _enqueue 直接丢帧)
+        self._stop_write_worker()
+        for path in list(self._video_paths.values()):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._video_paths.clear()
+
     def _enqueue(self, key: str, ts: float, data) -> None:
         """Non-blocking put of one frame (raw ndarray OR JPEG bytes) into the
         stream's write queue.  The poll loop never waits on disk I/O; when the
@@ -148,7 +184,17 @@ class BaseCameraRecorder(BaseRecorder):
         回退,而 commit 会清掉预热时间戳,先写后清会让 mp4 永远比
         ``{key}_timestamps`` 多出预热帧数(历史教训)。丢弃后容器的第一帧
         就是 commit 后第一帧,1:1 严格成立;确认阶段照常计数。
+
+        预热第一帧只用来**暖管**:写盘线程先按它的 shape 把 FFmpegWriter
+        构造好(nvenc 探测 + ffmpeg 进程,~0.8s,在预热期消化),确认
+        阶段经 :meth:`_ready_to_commit` 等 writer 就绪 —— launcher 才在
+        管线全热时广播 commit。commit 后第一帧即写,RUN_START(commit 后
+        ~0.6s)不再落进冷启动空窗(历史教训:懒构造期间 8 帧队列溢出,
+        每路丢 ~30 帧,QC 报首端 TimestampGap)。
         """
+        if not self._save_enabled:
+            # 已 discard(launch 中止):帧直接扔掉,不再重启写盘线程
+            return
         if self._write_failed:
             # 写盘线程已报过显式错误(ffmpeg died / 磁盘写失败)→ 原地
             # 抛错终止:继续录只会产出没有视频内容、只剩时间戳的数据
@@ -156,10 +202,10 @@ class BaseCameraRecorder(BaseRecorder):
                 "视频写盘管线已故障"
                 f"({', '.join(sorted(self._write_failed))})— 见写失败日志,"
                 "停止录制")
+        self._start_write_worker(key, warm_data=data)
         if self._launch_mode and not self._committed:
             self._frames_precommit += 1
             return
-        self._start_write_worker(key)
         self._frames_enqueued += 1
         q = self._write_queues[key]
         try:

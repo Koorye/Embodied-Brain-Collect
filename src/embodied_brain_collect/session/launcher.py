@@ -100,9 +100,13 @@ def _record_worker(rec: BaseRecorder, exc_box: list) -> None:
 def _wait_data_flowing(rec: BaseRecorder, abort_evt,
                        timeout: float, window: float = 1.0) -> str:
     """Passively confirm the record loop is producing: the recorder's
-    production signal grows.  Never touches the device — the loop already
-    owns it.  Empty string = confirmed."""
+    production signal grows AND its commit prerequisites are satisfied
+    (:meth:`BaseRecorder._ready_to_commit` — e.g. the camera slots keep
+    the ffmpeg write pipeline warm during pre-roll, so the commit itself
+    carries no cold-start window).  Never touches the device — the loop
+    already owns it.  Empty string = confirmed."""
     n_prev = rec._recording_signal()
+    flowing = False
     deadline = time.time() + timeout
     while time.time() < deadline:
         if abort_evt.is_set():
@@ -110,10 +114,15 @@ def _wait_data_flowing(rec: BaseRecorder, abort_evt,
         time.sleep(window)
         n_now = rec._recording_signal()
         if n_now > n_prev:
-            return ""
+            flowing = True
         n_prev = n_now
-    return (f"open 后 {timeout:g}s 内缓冲无新增样本 — "
-            "poll 循环没有在产数(设备静默或驱动卡死)")
+        if flowing and rec._ready_to_commit():
+            return ""
+    if not flowing:
+        return (f"open 后 {timeout:g}s 内缓冲无新增样本 — "
+                "poll 循环没有在产数(设备静默或驱动卡死)")
+    return (f"open 后 {timeout:g}s 内写盘管线未就绪 — "
+            "预热没完成(ffmpeg/writer 拉起失败或过慢,见该 slot 的 .log)")
 
 
 def _recorder_main(name: str, rec: BaseRecorder, ctrl_q, go_evt, abort_evt) -> None:

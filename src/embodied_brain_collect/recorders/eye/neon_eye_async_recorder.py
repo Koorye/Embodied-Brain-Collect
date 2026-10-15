@@ -328,7 +328,8 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 await self._finish_scene_video()    # 先排空尾帧,再关 mp4
                 self._teardown()    # 正式开录过:关流 + 保存
             else:
-                self._close()       # 中止路径:不写空数据文件
+                self._abort_scene_writer()   # 预热可能已拉起 writer:关掉并
+                self._close()               # 删掉 0 帧 mp4,不留空文件
             self._record_rc = rc
 
     async def _finish_scene_video(self) -> None:
@@ -520,6 +521,7 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
         writer_task = asyncio.create_task(self._scene_writer(queue, stop))
         self._scene_writer_task = writer_task    # 主循环监督 + 收尾排空用
         dropped = 0
+        warmed = False
         try:
             async for f in receive_video_frames(url, run_loop=False,
                                                 log_level=logging.WARNING):
@@ -529,6 +531,16 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 self._stream_last["scene"] = time.perf_counter()
                 if self._standby_mode and (not self._recording
                                            or not self._committed):
+                    if not warmed:
+                        # 预热第一帧只用来暖管:按它的分辨率把 FFmpegWriter
+                        # 构造好(nvenc 探测 + ffmpeg 拉起 ~1s,阻塞调用放
+                        # executor);确认阶段经 _ready_to_commit 等 writer
+                        # 就绪,commit 后第一帧即写,不再有懒构造空窗
+                        warmed = True
+                        img = await loop.run_in_executor(None, f.bgr_buffer)
+                        h, w = img.shape[:2]
+                        await loop.run_in_executor(
+                            None, self._build_scene_writer, h, w)
                     continue    # 预热(open→go、go→commit):不解码不写盘 ——
                                 # mp4 从 commit 后第一帧起,与
                                 # scene_timestamps 严格 1:1(否则 commit 清
@@ -574,22 +586,30 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 continue
             if self._writer is None:
                 h, w = img.shape[:2]
-                out_dir = Path(self.config.session_dir) / self.output_dir
-                out_dir.mkdir(parents=True, exist_ok=True)
-                self._out_mp4 = out_dir / "eye.mp4"
-                # Frame-exact HEVC (bframes=0, CFR, keyint=fps) — same
-                # FFmpegWriter the camera recorders use, hevc_nvenc when
-                # available.  Frames are BGR (f.bgr_buffer()).
-                self._writer = FFmpegWriter(
-                    self._out_mp4, w, h, 30.0,
-                    input_pix_fmt="bgr24", output_pix_fmt="yuv420p",
-                    crf=int(self.config.crf), preset=str(self.config.preset),
-                    encoder=str(getattr(self.config, "encoder", "auto")))
-                print(f"\n[eye:neon] scene mp4 -> {self._out_mp4} "
-                      f"({w}x{h}, {self._writer.encoder_used})")
+                # 兜底:预热没拉起时(如直接驱动路径)首帧构造
+                await loop.run_in_executor(
+                    None, self._build_scene_writer, h, w)
             await loop.run_in_executor(None, self._writer.write, img)
             self._acc("scene_timestamps", ts)
             queue.task_done()
+
+    def _build_scene_writer(self, h: int, w: int) -> None:
+        """构造 scene mp4 的 FFmpegWriter。阻塞调用(nvenc 探测 + 进程拉起
+        ~1s),调用方负责放 executor —— 预热期由 _scene_task 首帧触发,
+        commit 前 writer 已热,commit 后第一帧即写。"""
+        out_dir = Path(self.config.session_dir) / self.output_dir
+        out_dir.mkdir(parents=True, exist_ok=True)
+        self._out_mp4 = out_dir / "eye.mp4"
+        # Frame-exact HEVC (bframes=0, CFR, keyint=fps) — same
+        # FFmpegWriter the camera recorders use, hevc_nvenc when
+        # available.  Frames are BGR (f.bgr_buffer()).
+        self._writer = FFmpegWriter(
+            self._out_mp4, w, h, 30.0,
+            input_pix_fmt="bgr24", output_pix_fmt="yuv420p",
+            crf=int(self.config.crf), preset=str(self.config.preset),
+            encoder=str(getattr(self.config, "encoder", "auto")))
+        print(f"\n[eye:neon] scene mp4 -> {self._out_mp4} "
+              f"({w}x{h}, {self._writer.encoder_used})")
 
     async def _progress_task(self, stop):
         t0 = None    # duration clock starts at the go signal
@@ -656,6 +676,26 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
         # loop unwinds.
         self.stop_event.set()
 
+    def _abort_scene_writer(self) -> None:
+        """没等到 go 就中止:预热可能已把 scene writer 拉起 —— 关掉并删掉
+        0 帧 mp4。空 mp4 留在目录里会让 has_any_data 把空录制误判为
+        "有数据",会话汇总口径失真。"""
+        task = self._scene_writer_task
+        self._scene_writer_task = None
+        if task is not None:
+            task.cancel()      # 预热期它只 park 在 queue.get 上,取消无副作用
+        if self._writer is not None:
+            try:
+                self._writer.close()
+            except Exception:
+                pass
+            self._writer = None
+        if self._out_mp4 is not None:
+            try:
+                self._out_mp4.unlink(missing_ok=True)
+            except OSError:
+                pass
+
     def _teardown(self) -> None:
         # Release the mp4 BEFORE _save(): a hard kill at the npz step at
         # least leaves a playable mp4 (same ordering as tests/eye/test2.py).
@@ -664,11 +704,19 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                 self._writer.close()
                 self._writer = None
                 size = (self._out_mp4.stat().st_size / 1e6
-                        if self._out_mp4 and self._out_mp4.is_file() else 0.0)
+                        if self._out_mp4 and self._out_mp4.is_file() else 0)
                 print(f"\n[eye:neon] mp4 finalized -> {self._out_mp4} "
                       f"({size:.1f} MB)")
             except Exception as exc:
                 print(f"[eye:neon] writer.close failed: {exc}")
+        if (self._out_mp4 is not None
+                and not self._buf.get("scene_timestamps")):
+            # 一帧没写进去的 mp4 不留(discard 路径预热拉起的 writer):
+            # 空文件会骗过 has_any_data 的 *.mp4 探测
+            try:
+                self._out_mp4.unlink(missing_ok=True)
+            except OSError:
+                pass
         super()._teardown()
         # Per-stream counts + rates (mirrors tests/eye/test2.py).
         for key in ("gaze_timestamps", "imu_timestamps", "scene_timestamps"):
@@ -688,6 +736,14 @@ class NeonEyeAsyncRecorder(BaseEyeRecorder):
                               f"(gaze={len(self._gaze_q)}, imu={len(self._imu_q)})")
             time.sleep(0.1)
         return False, f"{timeout:g}s 内 gaze/imu 队列无新增(standby 未进样)"
+
+    def _ready_to_commit(self) -> bool:
+        """scene 写盘器已在预热期拉起(no_scene_video 时恒真)。launcher 的
+        确认阶段等它翻真才广播 commit —— commit 后第一帧 scene 即写,
+        不再有 ~1s 的懒构造空窗(相机基类同款历史教训)。"""
+        if self.config.no_scene_video:
+            return True
+        return self._writer is not None
 
     def _heartbeat_stats(self, elapsed: float) -> str:
         return super()._heartbeat_stats(elapsed)

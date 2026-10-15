@@ -303,6 +303,17 @@ class BaseRecorder(ABC):
         self._frame_ts.clear()
         self._reset_stream_state()
 
+    def _ready_to_commit(self) -> bool:
+        """确认阶段的第二道闸:除了数据在流动,本 slot 是否还允许 commit。
+
+        默认 True。有后台管线要在 commit 前拉热的 recorder(相机的
+        ffmpeg 写盘)覆写它 —— launcher 的录制确认会等它翻真才广播
+        commit,保证 commit 之后没有任何冷启动空窗(历史教训:视频
+        写盘器在 commit 后第一帧才懒构造,nvenc 探测 + 进程拉起约
+        1s,期间 8 帧队列溢出丢最老帧,RUN_START 落进空窗,四路视频
+        各丢 ~30 帧,QC 报首端 TimestampGap)。"""
+        return True
+
     def _reset_stream_state(self) -> None:
         """Commit-time anchor reset for callback/driver-buffered recorders —
         clear device-side indices/windows so the saved timeline starts at the
