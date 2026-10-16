@@ -12,7 +12,10 @@
 标签不动 / 动的是 "unbound" 那台,说明 yaml 绑错了或没绑,当场暴露。
 未进 yaml 的设备标 unbound;yaml 里绑了但没连上的,红字列在顶部。
 
-单窗口**左手系 3D 视图**:X 向右、Y 向上、Z 向屏幕里(深度)。地面网格
+单窗口 3D 视图为**真实透视(无镜像)**:+X 画在屏幕左、+Y 向上、+Z 向屏幕
+里(深度)。SteamVR/OpenVR 位姿是右手系(+Y 上,米制),轴向物理朝向由 VIVE
+建图决定 —— 本套场地实测:面朝场景时 +X 在操作员左手侧、+Z 指向场景深处,
+即屏幕画面与面朝场景所见左右一致(左手边的 tracker 显示在屏幕左侧)。地面网格
 (0.5m 起,按场景自适应) + 原点 XYZ 轴(R/G/B);每台 tracker 画彩色轨迹、
 到地面的垂线(高度参考)、姿态 gizmo(R/G/B 三段短线 = 设备坐标系 XYZ 轴
 旋转到世界后的方向)与标签;底部状态栏显示 (x,y,z|r,p,y)。鼠标左键拖拽
@@ -50,6 +53,9 @@ _W, _H = 1280, 720          # 窗口
 _HEAD = 64                  # 顶部说明/警示条
 _FOOT = 34                  # 底部状态条
 _RESCAN_S = 2.0             # 设备重扫周期(开机新 tracker 自动加入)
+_DEFAULT_YAW = 0.7          # 默认/复位视角的偏航(~40°)。yaw=0 时 +Z(场景深处)
+                            # 与 +Y(上)在屏幕上都投影成竖直方向,前后/上下分不
+                            # 开;偏航后 +Z 带上水平分量,与竖直的 +Y 分开 ~55°
 
 
 # =============================================================================
@@ -115,7 +121,7 @@ def sample_poses(vr, devices: list[dict]) -> dict[str, tuple | None]:
 
 
 # =============================================================================
-# 3D 视图(左手系:屏幕右 = +X,屏幕上 = +Y,屏幕里 = +Z)
+# 3D 视图(真实透视:+X 在屏幕左 = 面朝场景者的左手侧,屏幕上 = +Y,屏幕里 = +Z)
 # =============================================================================
 
 def _cv2():
@@ -124,7 +130,8 @@ def _cv2():
 
 
 class _View3D:
-    """软件 3D 投影:透视小孔模型,深度 = 世界 Z(向屏幕里),拖拽 orbit。
+    """软件 3D 投影:透视小孔模型,深度 = 世界 Z(向屏幕里),+X 画在屏幕左
+    (真实透视,非镜像),拖拽 orbit。
 
     取景默认自动包围全部轨迹点;用户一旦拖拽/缩放(user=True)就只跟随
     中心、不再夺走视角与距离,r 可复位。
@@ -133,7 +140,7 @@ class _View3D:
     def __init__(self, x0: int, y0: int, w: int, h: int):
         self.x0, self.y0, self.w, self.h = x0, y0, w, h
         self.cv = None                       # 每帧由 draw3d 赋值(整幅画布)
-        self.yaw, self.pitch = 0.0, 0.62     # 默认 ~35° 俯视
+        self.yaw, self.pitch = _DEFAULT_YAW, 0.62
         self.dist, self.radius = 5.0, 1.0
         self.center = np.zeros(3)
         self.user = False
@@ -146,7 +153,7 @@ class _View3D:
 
     def orbit(self, dx: int, dy: int) -> None:
         self.user = True
-        self.yaw += dx * 0.008
+        self.yaw -= dx * 0.008   # u 已取负(镜像回真实透视),反转 dx 保住拖拽手感
         self.pitch = float(np.clip(self.pitch + dy * 0.008, -0.35, 1.45))
 
     def zoom(self, k: float) -> None:
@@ -155,7 +162,7 @@ class _View3D:
 
     def reset(self) -> None:
         self.user = False
-        self.yaw, self.pitch = 0.0, 0.62
+        self.yaw, self.pitch = _DEFAULT_YAW, 0.62
 
     # ---- 取景与投影 ----
 
@@ -179,10 +186,12 @@ class _View3D:
         z1 = v[0] * sa + v[2] * ca
         y2 = v[1] * cb + z1 * sb              # 俯仰:绕屏幕水平轴转
         z2 = -v[1] * sb + z1 * cb
-        d = z2 + self.dist                    # 左手系:+Z 远离观察者
+        d = z2 + self.dist                    # 真实透视:+Z 远离观察者
         if d < 0.1:
             return None
-        return (self.x0 + self.w / 2 + self.f * x1 / d,
+        # u 取 -x1:相机面朝 +Z、+Y 上时右手系的 +X 落在画面左侧 —— 画面与
+        # 面朝场景的物理左右一致(实测场地 +X 在操作员左手侧),不再镜像。
+        return (self.x0 + self.w / 2 - self.f * x1 / d,
                 self.y0 + self.h / 2 - self.f * y2 / d, d)
 
     # ---- 图元(全部经 _seg,深度越远越暗) ----
@@ -214,7 +223,7 @@ class _View3D:
                       (46, 46, 46))
 
     def axes(self) -> None:
-        """原点世界轴 X/Y/Z = R/G/B;Z 蓝轴初始指向屏幕里(左手系)。"""
+        """原点世界轴 X/Y/Z = R/G/B;真实透视:X 红轴在屏幕左,Z 蓝轴指向屏幕里。"""
         cv2 = _cv2()
         L = 2 * self._step()
         for vec, color, name in (((1, 0, 0), (60, 60, 255), "X"),
@@ -273,7 +282,7 @@ def draw3d(canvas, view: _View3D, devices: list[dict], trails: dict,
     """整帧重画:顶部说明/警示,3D 场景,底部状态。"""
     cv2 = _cv2()
     canvas[:] = 0
-    head = ("3D left-handed: X right, Y up, Z into screen   "
+    head = ("3D real-perspective: +X screen-left, +Y up, +Z into screen   "
             "drag=orbit  wheel/+/-=zoom  r=reset  [q/Esc quit]")
     cv2.putText(canvas, head, (12, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                 (180, 180, 180), 1, cv2.LINE_AA)
@@ -441,7 +450,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print("\n依次拿起每台 tracker 移动:窗口里哪个标签的轨迹跟着动,"
               "那个角色就是这台 —— 与 role_serial_map 对不上当场暴露。\n"
-              "3D 视图为左手系(X 右、Y 上、Z 向屏幕里),可拖拽旋转观察。")
+              "3D 视图为真实透视,画面左右与面朝场景一致"
+              "(X 在屏幕左、Y 上、Z 向屏幕里),可拖拽旋转观察。")
         show(vr, args.seconds, args.trail, serial_role)
     finally:
         import openvr
