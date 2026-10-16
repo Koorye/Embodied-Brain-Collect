@@ -16,7 +16,7 @@
   预热期第一帧只用来确定 shape/像素格式,先构造 writer、不写帧;commit
   前管线全热,commit 后第一帧即写。覆盖三路 USB 相机、头环(其 1.5.2
   的 64 帧大队列从"吸掉突发"升级为"没有突发")、depthai/realsense。
-* **eye scene 同款暖管**(`neon_eye_async``):standby 首帧解码取分辨率、
+* **eye scene 同款暖管**(neon_eye_async_recorder):standby 首帧解码取分辨率、
   executor 里构造 FFmpegWriter;``_scene_writer`` 兜底路径保留。
 * **确认闸升级**(``BaseRecorder._ready_to_commit`` + launcher
   ``_wait_data_flowing``):数据在流动之外,还要管线就绪才放行 —— 全部
