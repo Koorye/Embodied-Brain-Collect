@@ -1,0 +1,4741 @@
+meta:
+  标题: 餐桌任务设计库
+  生成时间: 2026-10-15 17:22
+  任务总数: 100
+  类别分布:
+    传递交换: 8
+    工具使用: 8
+    插入封装: 8
+    收纳归位: 8
+    清洁整理: 8
+    综合流程: 8
+    茶席咖啡: 8
+    补充场景: 8
+    触觉辨识: 8
+    量取分装: 7
+    食物处理: 7
+    餐桌布置: 7
+    饮品制作: 7
+  模态分布:
+    视觉+触觉: 91
+    视觉: 9
+  难度分布:
+    中等: 50
+    简单: 38
+    困难: 12
+  触觉要素分布:
+    力控/握持: 31
+    重量/掂重: 22
+    纹理/质感: 7
+    软硬/干湿: 8
+    温度感知: 11
+    盲辨/触觉定位: 27
+    旋拧/插入到位: 33
+  说明: 每个任务 = 一个 configs/environments/餐桌_<任务名>/ 目录的设计蓝本;notes 可直接粘贴进图纸设计工具;触觉任务在 tactile 字段注明触觉要素
+tasks:
+- id: 1
+  name: 餐桌_双手传递大碗
+  category: 传递交换
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 托底感受重量与重心;水面平稳度;放碗先落底的手感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 大碗
+    shape: cyl
+    material: 陶瓷
+    weight: 900
+    dims:
+      d: 24
+      h: 9
+  notes: '背景摆放:花、水杯架
+
+    1.双手捧起大碗,一手托底一手扶沿,先在面前停一秒感受重量
+
+    2.把大碗平稳传递到对侧席位(N/G格)放下,行走路径避开桌上其他物品,放下时先落底后松手
+
+    3.再从对面把大碗端回面前(O/K/P/L格)
+
+    4.全程碗里的水不洒出来(如有水面晃动,放慢脚步等水平稳再走)
+
+    5.最后把大碗放回开局原位'
+- id: 2
+  name: 餐桌_削皮器削黄瓜
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 刀口滑过与卡顿补削;黄瓜/胡萝卜硬度差异;左手反向操作
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 黄瓜
+    shape: cyl
+    material: 食物
+    weight: 200
+    dims:
+      d: 3.5
+      h: 22
+  - name: 削皮器
+    shape: box
+    material: 金属
+    weight: 40
+    dims:
+      h: 1
+      l: 12
+      w: 6
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.左手竖握黄瓜中部,右手持削皮器贴住瓜身
+
+    2.从上往下削出第一条皮,感到刀口顺畅滑过、皮条连成长条落下,皮直接削进盘子
+
+    3.转动黄瓜逐条削,每条接上一条的边缘,削到整根露出浅色瓜肉
+
+    4.摸一遍瓜身:有残留的深绿硬块(瓜刺疤)就是没削净的地方,重点补削(感到刀口卡顿)
+
+    5.削净的黄瓜平放盘子,削皮器刀面朝下收好'
+- id: 3
+  name: 餐桌_蜡烛插蛋糕
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 插深的阻力变化;晃动检查;盲插的深度感知
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 小蛋糕
+    shape: cyl
+    material: 食物
+    weight: 350
+    dims:
+      d: 14
+      h: 8
+  - name: 蜡烛
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 蜡烛2
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 蜡烛3
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.把小蛋糕先放到面前(O/K/P/L格)正中
+
+    2.取一根蜡烛竖直对准蛋糕面插下,感到阻力随插深减小、插到约三分之一深即停(不要插穿底)
+
+    3.三根蜡烛按正三角位置插放,间距两指
+
+    4.逐根轻晃检查:手感稳的不动,晃的加深或换位重插
+
+    5.插完俯视看一圈,三根蜡烛顶面高度一致'
+- id: 4
+  name: 餐桌_餐具入筐分格
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 插格触底;盲辨柄型;晃筐听声
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 餐具筐
+    shape: box
+    material: 塑料
+    weight: 300
+    dims:
+      h: 12
+      l: 30
+      w: 22
+  - name: 勺子
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  - name: 叉子
+    shape: cyl
+    material: 金属
+    weight: 40
+    dims:
+      d: 1
+      h: 19
+  - name: 餐刀
+    shape: box
+    material: 金属
+    weight: 90
+    dims:
+      h: 1
+      l: 22
+      w: 2
+  notes: '背景摆放:花、水杯架
+
+    1.把餐具筐摆到面前(O/K/P/L格),认清三个隔格的分工(左勺中叉右刀)
+
+    2.散放的餐具逐件辨认后插进对应隔格,插的时候柄朝下、感到触底
+
+    3.每插一件就用指尖在格口拨一下,确认与本格类型一致
+
+    4.三格都插完后端起餐具筐轻晃:没有哐当碰撞声说明插放紧凑
+
+    5.餐具筐归位到桌角,刀刃朝内'
+- id: 5
+  name: 餐桌_海绵擦桌查残留
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 湿阻力vs干桌面;掌心粘滞感判断残留;盲检
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 海绵
+    shape: box
+    material: 海绵
+    weight: 20
+    dims:
+      h: 3
+      l: 11
+      w: 8
+  - name: 酱油渍贴
+    shape: box
+    material: 胶
+    weight: 5
+    dims:
+      h: 0.1
+      l: 8
+      w: 8
+  - name: 水碗
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 14
+      h: 7
+  notes: '背景摆放:花、水杯架
+
+    1.把海绵浸进水碗里吸水,拿起后捏出多余水分(感到海绵回弹)
+
+    2.用粗糙面擦桌面的酱油渍贴污渍区,感到湿阻力明显大于干桌面
+
+    3.污渍擦掉后用光滑面把整片区域带一遍水,收干水迹
+
+    4.手掌平贴擦过区域滑一遍:仍有粘滞感就是有残留,补擦直到手感与周围桌面一致
+
+    5.海绵冲洗后搭在碗沿沥水,桌面恢复原状'
+- id: 6
+  name: 餐桌_简易早餐全套
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 磕蛋力度;抹酱阻力;刺破顿挫;整体布局的间距手感
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 面包片
+    shape: box
+    material: 食物
+    weight: 40
+    dims:
+      h: 1.5
+      l: 12
+      w: 12
+  - name: 鸡蛋
+    shape: cyl
+    material: 食物
+    weight: 55
+    dims:
+      d: 4.5
+      h: 6
+  - name: 牛奶盒
+    shape: box
+    material: 纸
+    weight: 1000
+    dims:
+      h: 6
+      l: 7
+      w: 18
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 450
+    dims:
+      d: 26
+      h: 2.5
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  - name: 小碗
+    shape: cyl
+    material: 陶瓷
+    weight: 200
+    dims:
+      d: 10
+      h: 5
+  notes: '背景摆放:花、水杯架
+
+    1.准备:盘子摆到面前(O/K/P/L格)正中,水杯摆在右上
+
+    2.煮蛋位:把两个鸡蛋逐个磕进小碗备用(力度控制见磕蛋要领),有碎壳就粘出来
+
+    3.主餐位:两片面包叠放摆盘,面包上抹一层果酱(阻力感见抹酱要领)
+
+    4.饮品位:给牛奶盒插好吸管(刺破顿挫感)摆到盘右上,再倒一杯牛奶入杯
+
+    5.收尾:餐巾折角压盘沿,整个餐位整体目测:盘杯奶三点一线,间距一指'
+- id: 7
+  name: 餐桌_温杯烫盏
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 捧杯转涮时杯壁升温;茶夹夹烫杯的力度;倒水防溅的姿态控制
+  difficulty: 中等
+  background: 花、水杯架
+  objects: &id001
+  - name: 茶壶
+    shape: cyl
+    material: 陶瓷
+    weight: 620
+    dims:
+      d: 14
+      h: 12
+  - name: 茶杯
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶杯2
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶杯3
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶盘
+    shape: box
+    material: 竹
+    weight: 1500
+    dims:
+      h: 3
+      l: 40
+      w: 28
+  - name: 水盂
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 11
+      h: 9
+  notes: '背景摆放:花、水杯架
+
+    1.提茶壶往第一只茶杯里倒热水到七分满,端起茶杯双手捧住转一圈让热水涮过杯壁,手感杯壁热起来
+
+    2.把涮杯水倒进水盂,倒的时候杯口贴近水盂防溅
+
+    3.同样的方法烫第二只、第三只杯,烫完的杯子用茶巾擦掉杯底水渍
+
+    4.三只杯子杯柄朝右、一字排开摆到面前(O/K/P/L格),茶壶放回原位'
+- id: 8
+  name: 餐桌_冰袋冷敷准备
+  category: 补充场景
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 冰袋凉感与坠手;隔毛巾凉度;发条阻力
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 冰袋
+    shape: box
+    material: 塑料
+    weight: 300
+    dims:
+      h: 3
+      l: 12
+      w: 10
+  - name: 毛巾
+    shape: box
+    material: 棉
+    weight: 90
+    dims:
+      h: 3
+      l: 30
+      w: 22
+  - name: 定时器
+    shape: cyl
+    material: 塑料
+    weight: 80
+    dims:
+      d: 7
+      h: 3
+  notes: '背景摆放:花、水杯架
+
+    1.拿起冰袋,先掂一掂感受它的坠手与凉感
+
+    2.毛巾对折成两层,把冰袋包进毛巾里(隔着毛巾仍感到凉意,但不刺骨)
+
+    3.包好的冰敷包放到面前(O/K/P/L格)铺平
+
+    4.拧定时器到十五分钟(拧的时候感到发条的阻力,旋到刻度即松手)
+
+    5.把定时器放在冰敷包旁边,等待时每隔五分钟隔着毛巾检查一次冰袋温度'
+- id: 9
+  name: 餐桌_布袋摸物分类
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 袋内指尖盲辨勺窝/齿尖/棱边;确认空袋;出袋后视觉核对闭环
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 布袋
+    shape: box
+    material: 棉
+    weight: 60
+    dims:
+      h: 12
+      l: 16
+      w: 10
+  - name: 勺子
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  - name: 叉子
+    shape: cyl
+    material: 金属
+    weight: 40
+    dims:
+      d: 1
+      h: 19
+  - name: 金属碗
+    shape: cyl
+    material: 金属
+    weight: 150
+    dims:
+      d: 12
+      h: 5
+  - name: 陶瓷碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 12
+      h: 5
+  notes: '背景摆放:花、水杯架
+
+    1.勺子和叉子已装进布袋里,把手伸进袋里只靠指尖摸出勺子(勺窝的凹陷手感)和叉子(齿尖手感),摸到先别说出来
+
+    2.把摸出的勺子放进金属碗,叉子放进陶瓷碗,拿出袋口的瞬间才用眼睛核对分类对不对
+
+    3.分错的一件放回袋里重新摸,直到两件全部分对
+
+    4.最后把手再伸回袋里确认袋里已经空了(指尖摸不到东西为止)
+
+    5.两个碗并排摆到面前(O/K/P/L格),布袋叠好放右下角(F/C格)'
+- id: 10
+  name: 餐桌_量勺量米
+  category: 量取分装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 刮平米面的涩感;米流连续性;卷袋口的手感
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 米袋
+    shape: box
+    material: 塑料
+    weight: 2000
+    dims:
+      h: 12
+      l: 30
+      w: 20
+  - name: 量杯
+    shape: cyl
+    material: 塑料
+    weight: 60
+    dims:
+      d: 10
+      h: 12
+  - name: 饭煲内胆
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 22
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.把量杯插进米袋舀满一杯米,用手指沿杯口刮平(指尖感到米面刮平的涩感)
+
+    2.把量杯里的米倒进饭煲内胆,倒的时候米粒冲击内胆的哗声应连续
+
+    3.再量第二杯,两杯之间量法一致(刮平力度相同)
+
+    4.把饭煲内胆端平晃两下让米面平整,目测两杯米的刻度位置
+
+    5.米袋口卷紧用封口夹夹好,饭煲内胆放到面前(O/K/P/L格)'
+- id: 11
+  name: 餐桌_剥橘子装盘
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 橘皮油胞与白络分离的手感;指尖撕络;盲剥的皮层厚度感知
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 橘子
+    shape: cyl
+    material: 食物
+    weight: 150
+    dims:
+      d: 7
+      h: 7
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 22
+      h: 2.5
+  notes: '背景摆放:花、水杯架
+
+    1.双手捏住橘子蒂部抠开一小块皮,指甲感到橘皮油胞被挤破的绵软感
+
+    2.沿皮的瓣缝把橘皮整片剥下,剥的时候拇指嵌进皮与瓣之间感到一层白络分离
+
+    3.橘瓣掰开一片一片,把白色的橘络撕干净(指尖捻掉络丝的手感)
+
+    4.剥好的橘瓣一片一片码进盘子,摆成花瓣状
+
+    5.橘皮收进垃圾桶,果盘放到面前(O/K/P/L格)'
+- id: 12
+  name: 餐桌_摆西餐刀叉勺
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 指腹横扫柄尾检查齐平;闭眼盲调的指尖反馈;金属柄防滑持握
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 餐刀
+    shape: box
+    material: 金属
+    weight: 90
+    dims:
+      h: 1
+      l: 22
+      w: 2
+  - name: 餐叉
+    shape: box
+    material: 金属
+    weight: 70
+    dims:
+      h: 1.5
+      l: 20
+      w: 2.5
+  - name: 餐勺
+    shape: cyl
+    material: 金属
+    weight: 80
+    dims:
+      d: 5
+      h: 20
+  - name: 餐盘
+    shape: cyl
+    material: 陶瓷
+    weight: 450
+    dims:
+      d: 26
+      h: 2.5
+  notes: '背景摆放:花、水杯架
+
+    1.把餐盘先摆到面前(O/K/P/L格)正中
+
+    2.按西餐习惯把餐刀摆到餐盘右侧,刀刃朝盘;餐叉摆到左侧,叉齿朝上;餐勺摆在刀的右边
+
+    3.三件工具的柄尾要对齐盘沿一指宽的横线,摆完用指腹在柄尾横扫一遍,感到齐平即可
+
+    4.整套再检查一遍:刀叉勺与盘沿平行,间距一指宽'
+- id: 13
+  name: 餐桌_旋盖倒矿泉水
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 拧盖的扭矩手感与脱扣瞬间;握瓶倒水时瓶身湿滑的力度控制;倒水时通过瓶身重量变化判断余水
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 矿泉水瓶
+    shape: cyl
+    material: 塑料
+    weight: 550
+    dims:
+      d: 9
+      h: 25
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 11
+  notes: '背景摆放:花、水杯架
+
+    1.一手握稳矿泉水瓶瓶身,另一手捏住瓶盖逆时针拧开,拧到手感突然变松即为完全打开,瓶盖放在桌面右下角(F/C格)
+
+    2.提起矿泉水瓶把水倒进水杯,倒到约八分满即停,瓶口不要碰杯口
+
+    3.拧回瓶盖(拧到手感变紧即可,不必用尽全力)
+
+    4.把倒好水的水杯放到面前(O/K/P/L格),把矿泉水瓶放回原位'
+- id: 14
+  name: 餐桌_左右手交换物品
+  category: 传递交换
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掂重辨水杯;闭眼交接时的指尖定位
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 杯子
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  - name: 杯子2
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  - name: 杯子3
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.面前(O/K/P/L格)从左到右摆着三只杯
+
+    2.左手拿最左、右手拿最右,双手在胸前交换两只杯的位置后放回原格(交换时杯口都朝上,别让杯沿相碰)
+
+    3.再交换中间杯和左杯,回到起始状态
+
+    4.最后三只杯做一次轮转:左到中、中到右、右到左
+
+    5.全程目光看杯口防碰撞,结束时三只杯仍一条直线'
+- id: 15
+  name: 餐桌_剪刀剪包装
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 剪刃咬合的咔感;铝箔高阻力;剪断瞬间失阻
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 食品袋
+    shape: box
+    material: 塑料
+    weight: 150
+    dims:
+      h: 6
+      l: 22
+      w: 16
+  - name: 剪刀
+    shape: box
+    material: 金属
+    weight: 90
+    dims:
+      h: 1.5
+      l: 20
+      w: 8
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 14
+      h: 7
+  notes: '背景摆放:花、水杯架
+
+    1.拇指食指入剪刀指环,先空剪两下感受开合阻力
+
+    2.把食品袋立住,从袋口剪开一条直线,感到剪刃咬合前进、每一下都有轻微的咔感
+
+    3.剪开的口对着碗把内容物倒进去
+
+    4.剪刀对合刀刃朝里放回桌面右侧
+
+    5.把剪平的包装纸边条丢进垃圾桶'
+- id: 16
+  name: 餐桌_牙签水果拼盘
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 果皮破开与果肉包裹感;立串稳定性检查
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 苹果块
+    shape: box
+    material: 食物
+    weight: 30
+    dims:
+      h: 2
+      l: 3
+      w: 3
+  - name: 葡萄
+    shape: cyl
+    material: 食物
+    weight: 8
+    dims:
+      d: 2.2
+      h: 2.2
+  - name: 牙签
+    shape: cyl
+    material: 竹
+    weight: 0.5
+    dims:
+      d: 0.2
+      h: 7
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.取一根牙签从葡萄正中穿入,感到果皮破开、果肉包裹签身的手感,穿过一半留一半
+
+    2.穿好葡萄的牙签再插进苹果块块顶面,插稳立起
+
+    3.同样方法做四个小串,立在盘子四周呈放射状
+
+    4.中间用纯葡萄码一个小塔(三粒叠放,底两粒顶一粒,靠果肉贴合不滚落)
+
+    5.端盘前轻晃盘子听声:串不倒、塔不散才算合格'
+- id: 17
+  name: 餐桌_挂杯沥水架
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 杯沿吃钩、脱钩瞬间;轻拨验稳
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 沥水架
+    shape: box
+    material: 金属
+    weight: 800
+    dims:
+      h: 20
+      l: 40
+      w: 15
+  - name: 玻璃杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯2
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯3
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.把沥水架摆稳在面前(O/K/P/L格)
+
+    2.拿起玻璃杯杯口朝下挂上第一排挂钩,感到杯沿吃进钩弯、松手不落
+
+    3.三只杯依次挂满一排,间距均匀不相互磕碰
+
+    4.逐只轻拨检查挂稳度(有松动的重新挂钩)
+
+    5.沥出的水滴净后(等十秒),把杯子收进柜格或保持悬挂'
+- id: 18
+  name: 餐桌_拧抹布
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 坠手到变轻;挤水断线;两轮干湿对比
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 抹布
+    shape: box
+    material: 棉
+    weight: 200
+    dims:
+      h: 3
+      l: 30
+      w: 24
+  - name: 水盆
+    shape: cyl
+    material: 塑料
+    weight: 250
+    dims:
+      d: 28
+      h: 11
+  notes: '背景摆放:花、水杯架
+
+    1.把抹布按进水盆里浸透,提起时感到坠手
+
+    2.双手握住两端反向拧,感到水被挤出、布身从坠手变轻,拧到出水断线
+
+    3.再浸一次水,第二次拧得更干(出水更细更少)两轮对比手感
+
+    4.拧干的抹布抖开铺平擦一遍桌沿
+
+    5.用完的抹布搭在盆沿,盆放回原位'
+- id: 19
+  name: 餐桌_茶待客三步
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 温杯升温;提壶掂重;奉茶双手稳定
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 茶壶
+    shape: cyl
+    material: 陶瓷
+    weight: 620
+    dims:
+      d: 14
+      h: 12
+  - name: 茶杯
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶杯2
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶杯3
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶盘
+    shape: box
+    material: 竹
+    weight: 1500
+    dims:
+      h: 3
+      l: 40
+      w: 28
+  notes: '背景摆放:花、水杯架
+
+    1.温杯:热水依次涮烫三只茶杯,杯壁热起后倒掉涮水(捧杯转涮手感)
+
+    2.冲泡:茶则量茶入壶,注水后静置约一分钟(提壶掂重感受水量的变化)
+
+    3.分茶:按客人位-自己位的顺序巡回分茶到七分满,先客后己
+
+    4.奉茶:双手把第一杯茶推送到对侧席位(N/G格)客人位,杯柄转向客人
+
+    5.收尾:壶盖虚掩,壶嘴不对人,茶盘擦净水渍'
+- id: 20
+  name: 餐桌_公道杯分茶
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 分茶时手腕稳定收水;公道杯轻重随茶汤减少的变化
+  difficulty: 中等
+  background: 花、水杯架
+  objects: &id003
+  - name: 公道杯
+    shape: cyl
+    material: 玻璃
+    weight: 380
+    dims:
+      d: 10
+      h: 11
+  - name: 茶杯
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶杯2
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶盘
+    shape: box
+    material: 竹
+    weight: 1500
+    dims:
+      h: 3
+      l: 40
+      w: 28
+  notes: '背景摆放:花、水杯架
+
+    1.端起公道杯先晃两下让茶汤混匀
+
+    2.把茶汤轮流分进两只茶杯:每杯先倒一半,轮完一圈再补第二轮,分到每杯七分满
+
+    3.分的时候杯数多就沿着排面从左往右再折返,手腕保持稳定,断水时壶嘴轻轻一提收水
+
+    4.分完把公道杯里剩的茶汤倒进茶盘的排水口,公道杯放回原位
+
+    5.把分好的茶杯摆到面前(O/K/P/L格)一字排开'
+- id: 21
+  name: 餐桌_桌面文具归位
+  category: 补充场景
+  modalities:
+  - 视觉
+  tactile: 帽扣轻响;指尖捏针;掌扫查漏
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 笔
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 笔2
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 回形针盒
+    shape: box
+    material: 塑料
+    weight: 80
+    dims:
+      h: 3
+      l: 10
+      w: 8
+  - name: 回形针
+    shape: box
+    material: 金属
+    weight: 2
+    dims:
+      h: 0.5
+      l: 3
+      w: 1
+  - name: 笔筒
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 9
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.散笔逐支笔帽按紧(帽扣轻响)后笔尖朝下插进笔筒,感到落底
+
+    2.散落的回形针逐枚捡进回形针盒(指尖捏针的细致动作,注意别让针弹飞)
+
+    3.摇一摇回形针盒听声核对数量不少于五枚
+
+    4.橡皮、尺子归到桌角收纳位对齐放好
+
+    5.掌心扫过桌面确认无遗漏小物(指尖感到残留就捡起)'
+- id: 22
+  name: 餐桌_掂重分拣满空杯
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掂重分辨满杯空杯;闭眼精分;水位目测验证闭环
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 杯
+    shape: cyl
+    material: 陶瓷
+    weight: 320
+    dims:
+      d: 8.5
+      h: 10
+  - name: 杯2
+    shape: cyl
+    material: 陶瓷
+    weight: 320
+    dims:
+      d: 8.5
+      h: 10
+  - name: 杯3
+    shape: cyl
+    material: 陶瓷
+    weight: 320
+    dims:
+      d: 8.5
+      h: 10
+  - name: 杯4
+    shape: cyl
+    material: 陶瓷
+    weight: 320
+    dims:
+      d: 8.5
+      h: 10
+  - name: 托盘
+    shape: box
+    material: 塑料
+    weight: 250
+    dims:
+      h: 2
+      l: 30
+      w: 20
+  notes: '背景摆放:花、水杯架
+
+    1.四只外观一样的杯一字排开,其中两只装了大半杯水、两只空杯(外观无法分辨)
+
+    2.逐只单手拿起掂重(手腕小幅上下晃两下),掂完放回原位,心中记下重轻
+
+    3.把四只杯按掂重分成两组:重的两只摆上托盘,轻的两只摆下托盘
+
+    4.分组完成后倒入水槽前先目测核对:抽一只重杯对着光看水位验证
+
+    5.验证无误后把托盘(满杯组)放到面前(O/K/P/L格),空杯放回原位'
+- id: 23
+  name: 餐桌_刻度线接水
+  category: 量取分装
+  modalities:
+  - 视觉
+  tactile: 指腹贴壁验水位;水流减速控制
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 量杯
+    shape: cyl
+    material: 玻璃
+    weight: 250
+    dims:
+      d: 9
+      h: 15
+  - name: 水壶
+    shape: cyl
+    material: 金属
+    weight: 900
+    dims:
+      d: 13
+      h: 24
+  notes: '背景摆放:花、水杯架
+
+    1.把量杯平放桌面,视线与刻度平齐
+
+    2.提水壶往量杯里倒水,眼睛盯住 300ml 刻度线,水面接近线时放慢水流
+
+    3.水面恰好切线即停(超过就用量杯的倾口倒回一点)
+
+    4.一只手指腹贴杯壁感受水位高度,与刻度互验
+
+    5.量好的水端平稳倒入目标碗,量杯控两秒滴净再放回'
+- id: 24
+  name: 餐桌_剥水煮蛋
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 滚压出裂的涩感与碎声;壳膜整片揭下的分离感;盲剥的裂纹走向感知
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 水煮蛋
+    shape: cyl
+    material: 食物
+    weight: 60
+    dims:
+      d: 4.5
+      h: 6
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.拿起水煮蛋在桌面轻滚两下压出细密裂纹(滚的时候感到壳面发涩,声音变碎即裂匀)
+
+    2.从气室那头(较钝的一端)开始抠开一小片壳,指尖捏住壳膜整片揭下
+
+    3.顺着裂纹把整片壳撕完,蛋白表面尽量光滑不坑洼
+
+    4.剥下的碎壳捏拢丢进垃圾桶
+
+    5.剥好的蛋放到盘子上,再剥第二个,两个并排'
+- id: 25
+  name: 餐桌_铺餐垫对齐
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 指腹辨正反面织纹;推平气泡的手感;指节量桌沿距离
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 餐垫
+    shape: box
+    material: 布
+    weight: 180
+    dims:
+      h: 0.5
+      l: 45
+      w: 30
+  notes: '背景摆放:花、水杯架
+
+    1.拿起餐垫先用手摸一下正反面:正面织纹细、反面粗糙,确认正面朝上
+
+    2.把餐垫铺到面前(O/K/P/L格),垫子长边与桌边平行
+
+    3.用指节抵住桌沿比一下,垫子上边缘离桌沿约两指宽,左右目测居中
+
+    4.手掌从垫子中心向四角推平,把鼓起的气泡推出去,垫面服帖不翘边
+
+    5.再铺第二块餐垫到对侧(N/G格),两块的方向和离桌沿距离保持一致'
+- id: 26
+  name: 餐桌_冲奶粉
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掀罐盖卡扣的阻力;刮平奶粉的手感;搅拌时结块从有到无的阻力变化;拧盖到位手感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 奶粉罐
+    shape: cyl
+    material: 金属
+    weight: 480
+    dims:
+      d: 12
+      h: 18
+  - name: 水杯
+    shape: cyl
+    material: 陶瓷
+    weight: 320
+    dims:
+      d: 8.5
+      h: 10
+  - name: 量勺
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 4
+      h: 8
+  - name: 勺子
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  notes: '背景摆放:花、水杯架
+
+    1.双手按住奶粉罐两侧的卡扣掀开盖子(边缘有阻力,听到轻响即到位)
+
+    2.用罐内量勺舀两平勺奶粉倒进水杯,刮平的时候勺背贴着罐口刮,手感平了就算一平勺
+
+    3.提起电热水壶往水杯里倒温水,倒到约七分满
+
+    4.用勺子沿一个方向搅拌,搅到杯底没有结块、勺子转起来阻力变顺滑为止
+
+    5.盖回奶粉罐盖子,把冲好的奶放到面前(O/K/P/L格)'
+- id: 27
+  name: 餐桌_两物换位不碰撞
+  category: 传递交换
+  modalities:
+  - 视觉
+  tactile: 玻璃与陶器不同的握持力度;错层路径的高度控制
+  difficulty: 简单
+  background: 花、水杯架
+  objects: &id002
+  - name: 花瓶
+    shape: cyl
+    material: 玻璃
+    weight: 500
+    dims:
+      d: 8
+      h: 18
+  - name: 糖罐
+    shape: cyl
+    material: 陶瓷
+    weight: 420
+    dims:
+      d: 10
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.花瓶和糖罐分别摆在面前左右两侧
+
+    2.双手同时各拿起一件,在空中交换位置后放回对方原来的位置(交换路径一高一低错开,防止相撞)
+
+    3.放下时对准原来的印记,轻放
+
+    4.重复交换三次,三次路径可以变化但都不许碰撞
+
+    5.结束后两件物品位置互换、方向与开局一致'
+- id: 28
+  name: 餐桌_开瓶器开红酒
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 螺旋吃进木塞的逐扣阻力;拔塞瞬间一松;锡纸脆裂
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 红酒瓶
+    shape: cyl
+    material: 玻璃
+    weight: 1200
+    dims:
+      d: 8
+      h: 30
+  - name: 海马刀
+    shape: box
+    material: 金属
+    weight: 130
+    dims:
+      h: 2
+      l: 12
+      w: 3
+  - name: 红酒杯
+    shape: cyl
+    material: 玻璃
+    weight: 200
+    dims:
+      d: 9
+      h: 20
+  notes: '背景摆放:花、水杯架
+
+    1.撕开瓶口的锡纸帽沿撕口,感到锡纸被撕开的脆裂
+
+    2.把海马刀的螺旋针对准软木塞中心旋入,感到螺旋一扣一扣吃进木塞(阻力均匀),旋入约五圈留一圈
+
+    3.把刀头一级卡在瓶口,握住刀柄向上提,感到木塞被缓缓拔出、瓶口漏气的轻响,提到手感一松木塞脱出
+
+    4.用二级卡口再提一次把木塞完全拔净,闻一下木塞下端(酒没有变质异味)
+
+    5.沿杯壁倒三分之一杯,酒瓶立回右下角(F/C格),酒杯放到面前(O/K/P/L格)'
+- id: 29
+  name: 餐桌_保鲜盒扣盖
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 密封槽触检;逐角咔哒锁合;倒转验漏
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 保鲜盒
+    shape: box
+    material: 塑料
+    weight: 200
+    dims:
+      h: 8
+      l: 18
+      w: 14
+  - name: 保鲜盒盖
+    shape: box
+    material: 塑料
+    weight: 60
+    dims:
+      h: 2
+      l: 18
+      w: 14
+  notes: '背景摆放:花、水杯架
+
+    1.检查盒沿干净无残渣(指腹摸一圈密封槽)
+
+    2.把盖子对准盒口四角先虚扣上
+
+    3.依次按压四角,每角按到感到咔哒一声、盖沿吃进盒沿即锁上
+
+    4.四角全锁后,提起盖子一角轻掀检查:掀不动即密封良好
+
+    5.双手端平盒子倒转两秒再翻回,确认不漏,放到面前(O/K/P/L格)'
+- id: 30
+  name: 餐桌_盘子插立沥水架
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 盘沿滑进槽底;拔出重插的阻力;盲插贴合感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 沥水架
+    shape: box
+    material: 金属
+    weight: 800
+    dims:
+      h: 20
+      l: 40
+      w: 15
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 450
+    dims:
+      d: 26
+      h: 2.5
+  - name: 盘子2
+    shape: cyl
+    material: 陶瓷
+    weight: 450
+    dims:
+      d: 26
+      h: 2.5
+  - name: 骨碟
+    shape: cyl
+    material: 陶瓷
+    weight: 250
+    dims:
+      d: 16
+      h: 2
+  - name: 骨碟2
+    shape: cyl
+    material: 陶瓷
+    weight: 250
+    dims:
+      d: 16
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.认清沥水架插槽的大小分区:大盘区、小碟区
+
+    2.大盘沿插槽竖直插下,感到盘沿滑进槽底(一次插正,不在槽里刮擦)
+
+    3.大盘之间留一指间隙,碟子插进小碟区
+
+    4.插完后从侧面看:所有盘碟在同一竖直平面,不前后歪
+
+    5.歪的拔出重插(拔出时感到槽口吃盘沿的阻力),架子归位'
+- id: 31
+  name: 餐桌_擦玻璃杯内外
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 隔布辨杯壁弧面与死角;螺旋下行;盲擦
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 玻璃杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 杯布
+    shape: box
+    material: 超细纤维
+    weight: 40
+    dims:
+      h: 1
+      l: 25
+      w: 25
+  notes: '背景摆放:花、水杯架
+
+    1.把杯布蒙在食指中指上探进玻璃杯杯内,隔着布转圈擦拭内壁,指腹隔着布感到杯壁弧面
+
+    2.杯底用布角打小圈擦到
+
+    3.外壁用整手包握擦拭,从杯口到杯底螺旋向下
+
+    4.擦完举到光下转一圈目测:没有水痕指印为合格
+
+    5.不合格的地方再补擦(通常是杯口内侧和杯底),合格后杯口朝下扣在沥水垫上'
+- id: 32
+  name: 餐桌_甜品台组装
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 插烛到位;稳放不滚;折痕压实
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 纸杯蛋糕
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 纸杯蛋糕2
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 纸杯蛋糕3
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 蜡烛
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 蜡烛2
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 蜡烛3
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 大盘
+    shape: cyl
+    material: 陶瓷
+    weight: 600
+    dims:
+      d: 30
+      h: 3
+  - name: 餐巾纸
+    shape: box
+    material: 纸
+    weight: 5
+    dims:
+      h: 0.5
+      l: 30
+      w: 30
+  notes: '背景摆放:花、水杯架
+
+    1.底盘:大盘摆到面前(O/K/P/L格)中心
+
+    2.蛋糕:三只纸杯蛋糕在盘上摆成三角阵形,间距两指
+
+    3.插烛:每只蛋糕中央插一根蜡烛,插深一致(阻力到位感),逐根轻晃验稳
+
+    4.点缀:两粒葡萄对切成半,切面朝下摆在蛋糕间隙(指腹稳放不滚)
+
+    5.纸巾:折成扇形插在杯口做装饰(折痕压实感),成品整体俯视对称'
+- id: 33
+  name: 餐桌_茶则量茶入壶
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 干茶在茶则里的滑动沙感;磕壶口抖碎末;盖子对正压稳
+  difficulty: 简单
+  background: 花、水杯架
+  objects: &id004
+  - name: 茶叶罐
+    shape: cyl
+    material: 陶瓷
+    weight: 380
+    dims:
+      d: 9
+      h: 11
+  - name: 茶则
+    shape: box
+    material: 竹
+    weight: 40
+    dims:
+      h: 1.5
+      l: 16
+      w: 4
+  - name: 茶壶
+    shape: cyl
+    material: 陶瓷
+    weight: 620
+    dims:
+      d: 14
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.双手打开茶叶罐盖子,盖子仰面放在罐旁
+
+    2.用茶则伸进罐里舀起一勺茶叶,干茶在勺里会沙沙滑动,轻晃勺柄把茶叶拨平
+
+    3.把茶则里的茶倒进茶壶壶口,倒完把茶则在壶口轻磕两下抖净碎末
+
+    4.盖回茶叶罐盖子(盖沿对正压稳),茶壶放回面前(O/K/P/L格)等待注水'
+- id: 34
+  name: 餐桌_小物形状归位
+  category: 补充场景
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 闭眼辨形;嵌入无翘动;摇盒听声
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 收纳盒
+    shape: box
+    material: 塑料
+    weight: 250
+    dims:
+      h: 6
+      l: 24
+      w: 18
+  - name: 积木块
+    shape: box
+    material: 木
+    weight: 20
+    dims:
+      h: 3
+      l: 3
+      w: 3
+  - name: 积木块2
+    shape: cyl
+    material: 木
+    weight: 15
+    dims:
+      d: 3
+      h: 3
+  - name: 积木块3
+    shape: cyl
+    material: 木
+    weight: 10
+    dims:
+      d: 1.5
+      h: 6
+  notes: '背景摆放:花、水杯架
+
+    1.收纳盒内有三形状凹槽(方/圆/长条),先闭眼摸一遍槽型记牢
+
+    2.散放的木块逐块闭眼辨认形状(方块的棱角/圆柱的弧面/长条的比例)后放入对应凹槽
+
+    3.每放一块轻按一下,感到块底完全嵌入槽底(无翘动)
+
+    4.放完盖上盒盖(卡扣到位),摇一摇听声:无滚动碰撞即全部嵌稳
+
+    5.睁眼开盖核对形状与槽位一一对应,错的取出重放'
+- id: 35
+  name: 餐桌_纹理配对
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 指腹分辨粗/绒/滑/毛圈四档织纹;同款一致性与视觉颜色交叉验证
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 砂纸垫
+    shape: box
+    material: 纸
+    weight: 30
+    dims:
+      h: 0.3
+      l: 15
+      w: 10
+  - name: 绒布
+    shape: box
+    material: 布
+    weight: 40
+    dims:
+      h: 0.5
+      l: 15
+      w: 10
+  - name: 丝绸
+    shape: box
+    material: 布
+    weight: 30
+    dims:
+      h: 0.3
+      l: 15
+      w: 10
+  - name: 毛巾片
+    shape: box
+    material: 棉
+    weight: 60
+    dims:
+      h: 1
+      l: 15
+      w: 10
+  - name: 收纳盒
+    shape: box
+    material: 塑料
+    weight: 150
+    dims:
+      h: 5
+      l: 32
+      w: 24
+  notes: '背景摆放:花、水杯架
+
+    1.桌面上散着八块方巾,两两同款(砂纸面/绒面/丝绸/毛圈面),先翻到正面朝上
+
+    2.闭眼逐一用指腹摩挲每块方巾,按手感粗细分成四类堆
+
+    3.每类堆里的两块叠在一起再摩挲确认同款(两块手感完全一致才成对)
+
+    4.睁眼检查:同款的两块应同色,颜色对不上说明摸错,放回重摸
+
+    5.四对方巾按粗到细的顺序从左到右摆进收纳盒的四个隔位,摆完掀开盒盖看一眼全貌'
+- id: 36
+  name: 餐桌_弹簧秤称水果
+  category: 量取分装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 挂钩挂稳与提秤竖直;先掂后称的直觉验证
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 弹簧秤
+    shape: cyl
+    material: 金属
+    weight: 120
+    dims:
+      d: 3
+      h: 20
+  - name: 苹果
+    shape: cyl
+    material: 食物
+    weight: 220
+    dims:
+      d: 8
+      h: 8
+  - name: 橙子
+    shape: cyl
+    material: 食物
+    weight: 260
+    dims:
+      d: 7.5
+      h: 7.5
+  - name: 网兜袋
+    shape: box
+    material: 塑料
+    weight: 20
+    dims:
+      h: 1
+      l: 20
+      w: 15
+  notes: '背景摆放:花、水杯架
+
+    1.把弹簧秤的挂钩从环上取下,吊在手里先空秤归零(表盘指针停在零位)
+
+    2.把苹果放进网兜袋兜好,兜口挂上秤钩,提稳读数(读数时秤身竖直、指针停稳)
+
+    3.记下苹果重量,再称橙子,比较两种水果谁重
+
+    4.称完把水果按从重到轻的顺序摆进果盘
+
+    5.弹簧秤挂钩归位,果盘放到面前(O/K/P/L格)'
+- id: 37
+  name: 餐桌_磕鸡蛋入碗
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 磕蛋力度的裂缝反馈;掰壳的壳膜拉扯;指尖粘出碎壳的手感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 鸡蛋
+    shape: cyl
+    material: 食物
+    weight: 55
+    dims:
+      d: 4.5
+      h: 6
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 14
+      h: 7
+  notes: '背景摆放:花、水杯架
+
+    1.单手握鸡蛋在碗沿上磕一下,力度以壳面出现一道裂缝为准(敲太轻不裂,太重会碎进碗里)
+
+    2.双手拇指顶住裂缝处掰开蛋壳,蛋清蛋黄落进碗,掰的时候两半壳当碗接住
+
+    3.检查碗里有没有碎壳,有就用指尖贴着蛋清表面把碎壳粘出来(壳尖挂蛋清的手感)
+
+    4.空壳对扣收进垃圾桶
+
+    5.重复磕第二个蛋,两份蛋液在同一碗里,碗放到面前(O/K/P/L格)'
+- id: 38
+  name: 餐桌_筷子配对敲齐
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 捻筷身辨同款;敲齐的实声与手感;筷头尾方向分辨
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 筷子
+    shape: cyl
+    material: 木头
+    weight: 7.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 筷子2
+    shape: cyl
+    material: 木头
+    weight: 7.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 筷枕
+    shape: box
+    material: 陶瓷
+    weight: 60
+    dims:
+      h: 2
+      l: 6
+      w: 3
+  notes: '背景摆放:花、水杯架
+
+    1.散乱的筷子先挑出一根,再从堆里摸出和它粗细、纹路一样的那根配成对,配对时拇指和食指捻一下筷身比对光滑度
+
+    2.双筷子并拢,粗头墩桌面敲两下把两根敲齐(听到笃笃的实声即齐)
+
+    3.捏住齐头竖起来目测一遍,长短差出一指节就重新敲
+
+    4.把配好的一双筷子架到筷枕上,筷子离筷枕两端各留一指宽
+
+    5.重复以上步骤把桌上散筷全部配完,成对的筷子统一摆到面前(O/K/P/L格)'
+- id: 39
+  name: 餐桌_袋泡茶冲泡
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 提拉茶包的沉浮感;挤压湿茶包的软瘪手感;线绳张力
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 茶包
+    shape: box
+    material: 纸
+    weight: 3
+    dims:
+      h: 1
+      l: 8
+      w: 6
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 320
+    dims:
+      d: 8.5
+      h: 11
+  - name: 电热水壶
+    shape: cyl
+    material: 塑料
+    weight: 766
+    dims:
+      d: 15
+      h: 22
+  notes: '背景摆放:花、水杯架
+
+    1.拿起红茶包,捏住线绳端的纸标签把茶包放进水杯,标签留在杯外搭在杯沿
+
+    2.提起电热水壶往水杯里倒热水,倒到约八分满,注意别冲到线绳
+
+    3.捏住标签轻轻上下提拉红茶包五六次加速出味,提拉时感到茶包在水中一沉一浮
+
+    4.泡好后捏着标签把红茶包提出来,搭在杯沿沥两秒再放到右下角的小碟上(F/C格)
+
+    5.把泡好的茶放到面前(O/K/P/L格)'
+- id: 40
+  name: 餐桌_掂重排序
+  category: 传递交换
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掂重分辨三档重量;闭眼复核
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 罐子
+    shape: cyl
+    material: 金属
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 罐子2
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 8
+      h: 12
+  - name: 罐子3
+    shape: cyl
+    material: 金属
+    weight: 700
+    dims:
+      d: 8
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.三只外形一样的罐子散放在面前,先逐只拿起掂重(每只掂两下,手腕小幅上下晃),感受三档不同的重量
+
+    2.按从轻到重排成一条直线摆到面前(O/K/P/L格)
+
+    3.排完再逐只复核一遍掂重顺序,发现错误就调整
+
+    4.复核无误后,在最重的罐子上叠一只小碗作为标记
+
+    5.最后闭眼按轻到重的顺序逐只指一遍,指错重来'
+- id: 41
+  name: 餐桌_手动打蛋器打发
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 打发三阶段阻力变化;挂勺感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 打蛋碗
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 16
+      h: 8
+  - name: 手动打蛋器
+    shape: cyl
+    material: 金属
+    weight: 60
+    dims:
+      d: 6
+      h: 25
+  - name: 鸡蛋
+    shape: cyl
+    material: 食物
+    weight: 55
+    dims:
+      d: 4.5
+      h: 6
+  notes: '背景摆放:花、水杯架
+
+    1.磕蛋入碗(步骤同磕蛋任务),检查无碎壳
+
+    2.握手动打蛋器垂直入蛋液,手腕发力快速画圈搅打
+
+    3.感受阻力随打发进程变化:从水一样的顺滑,到起泡发涩,再到能挂住打蛋器的绵密感
+
+    4.提到发泡后停手,观察气泡:细密均匀即打发到位
+
+    5.打蛋器在碗沿磕两下抖净蛋液,归位;打好的蛋液碗放到面前(O/K/P/L格)'
+- id: 42
+  name: 餐桌_保温杯旋盖
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 螺纹咬合的细密阻力;旋紧变紧的手感;弹跳盖按钮行程
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 保温杯
+    shape: cyl
+    material: 金属
+    weight: 350
+    dims:
+      d: 7
+      h: 20
+  - name: 杯盖
+    shape: cyl
+    material: 塑料
+    weight: 80
+    dims:
+      d: 7.5
+      h: 4
+  notes: '背景摆放:花、水杯架
+
+    1.检查杯口有无水渍,有就用纸巾擦一圈
+
+    2.把杯盖对准杯口旋上,先轻旋两圈对好螺纹(感到螺纹咬合的细密阻力)
+
+    3.继续旋紧到手感明显变紧、再旋就吃力为止,不要死拧
+
+    4.对齐盖上的锁标与杯身箭头
+
+    5.倒置晃两下听声确认不漏,立着放到面前(O/K/P/L格)'
+- id: 43
+  name: 餐桌_碗叠三只对齐
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 落座贴合轻响;捧转对齐的错台手感;盲叠
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碗2
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碗3
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  notes: '背景摆放:花、水杯架
+
+    1.拿起第一只碗碗口朝上放稳
+
+    2.第二只叠上去,放下前感到碗底悬空定位、落座时贴合轻响
+
+    3.第三只同法叠放,叠完双手捧摞轻转半圈:感到三只碗同心对齐(边缘无错台)
+
+    4.有错台的单手顶住上碗轻推回正
+
+    5.捧住整摞放到面前(O/K/P/L格),捧的时候感受三只碗的整体重心'
+- id: 44
+  name: 餐桌_刷子扫面粉
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 刷毛贴桌推粉感;簸箕压低贴桌;磕桶沿抖粉
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 刷子
+    shape: box
+    material: 塑料
+    weight: 60
+    dims:
+      h: 4
+      l: 20
+      w: 5
+  - name: 簸箕
+    shape: box
+    material: 塑料
+    weight: 80
+    dims:
+      h: 2
+      l: 16
+      w: 12
+  - name: 面粉堆
+    shape: box
+    material: 食物
+    weight: 40
+    dims:
+      h: 0.5
+      l: 15
+      w: 15
+  - name: 垃圾桶
+    shape: cyl
+    material: 塑料
+    weight: 400
+    dims:
+      d: 16
+      h: 22
+  notes: '背景摆放:花、水杯架
+
+    1.手持刷子把桌面的面粉堆往一处扫拢(扫的时候刷毛贴桌面,感到粉堆被推动)
+
+    2.把簸箕放到粉堆前方,用刷子把粉扫进簸箕,扫的时候簸箕边压低贴桌
+
+    3.检查桌面:逆光看一遍,有残留白点就补扫
+
+    4.簸箕端平倒进垃圾桶,簸箕边在桶沿轻磕两下把粘粉抖净
+
+    5.刷子和簸箕合起来扣放回原位,桌面擦净'
+- id: 45
+  name: 餐桌_野餐盒组装
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 拉链全程手感;扣盖咔哒;包纸裹紧;晃袋听声
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 饭盒袋
+    shape: box
+    material: 布
+    weight: 300
+    dims:
+      h: 20
+      l: 26
+      w: 14
+  - name: 三明治盒
+    shape: box
+    material: 塑料
+    weight: 150
+    dims:
+      h: 6
+      l: 16
+      w: 12
+  - name: 水果
+    shape: cyl
+    material: 食物
+    weight: 220
+    dims:
+      d: 8
+      h: 8
+  - name: 水果2
+    shape: cyl
+    material: 食物
+    weight: 120
+    dims:
+      d: 3.5
+      h: 19
+  - name: 水壶
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 7
+      h: 22
+  notes: '背景摆放:花、水杯架
+
+    1.打开饭盒袋拉链(拉链顺畅阻力,感到滑到头的顿挫),袋口撑开立在面前(O/K/P/L格)
+
+    2.主食位:三明治盒扣紧盒盖(四角咔哒)放进袋底
+
+    3.水果位:苹果和香蕉用纸巾分别包好(包的时候感到纸巾裹紧)竖放进空隙
+
+    4.饮品位:水壶拧紧盖(手感变紧)斜插进侧袋,提一下确认卡住
+
+    5.拉回拉链(全程顺畅无卡壳),拎起饭盒袋晃两下听声:内部无碰撞滑动才算装好'
+- id: 46
+  name: 餐桌_盖碗出汤
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 烫碗时手指搭沿不碰壁的持握;盖缝控制与断水滴沥;碗身重量变化
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 盖碗
+    shape: cyl
+    material: 陶瓷
+    weight: 200
+    dims:
+      d: 9
+      h: 8
+  - name: 公道杯
+    shape: cyl
+    material: 玻璃
+    weight: 380
+    dims:
+      d: 10
+      h: 11
+  - name: 茶盘
+    shape: box
+    material: 竹
+    weight: 1500
+    dims:
+      h: 3
+      l: 40
+      w: 28
+  notes: '背景摆放:花、水杯架
+
+    1.注水后的盖碗很烫,一手虎口卡住碗沿、手指只搭在碗口边缘(不碰碗身),另一手按住盖钮留一条出水缝
+
+    2.倾斜盖碗沿缝隙把茶汤全部沥进公道杯公道杯,出汤时盖子挡住茶叶不跟着滑出
+
+    3.汤快出尽时把缝隙开大一点,手腕抖两下把最后几滴沥净(滴不尽会闷苦)
+
+    4.盖碗放回茶盘,端起公道杯把茶汤分进茶杯
+
+    5.分好的茶杯摆到面前(O/K/P/L格)'
+- id: 47
+  name: 餐桌_碗碟预洗归集
+  category: 补充场景
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 涮洗残渣感;叠放贴合;掂重预估水量
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碗2
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碟子
+    shape: cyl
+    material: 陶瓷
+    weight: 260
+    dims:
+      d: 18
+      h: 2
+  - name: 筷子
+    shape: cyl
+    material: 木头
+    weight: 14.4
+    dims:
+      d: 0.7
+      h: 25
+  - name: 洗盆
+    shape: cyl
+    material: 塑料
+    weight: 350
+    dims:
+      d: 32
+      h: 13
+  notes: '背景摆放:花、水杯架
+
+    1.桌面用过的餐具逐件拿起,先在水碗水碗里涮一下(感到残渣被水带走)
+
+    2.碗碗相叠(叠放要领:贴合轻响、捧转对齐)码成一摞
+
+    3.碟子竖插进洗盆一侧的碟架槽,插到槽底
+
+    4.筷子并拢头尾对齐横放在洗盆另一侧
+
+    5.整盆端起掂重预估水量,平稳移到桌角待洗区,水面不荡出'
+- id: 48
+  name: 餐桌_软硬分拣
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 指腹按压辨软硬;闭眼复核
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 软面包
+    shape: box
+    material: 食物
+    weight: 45
+    dims:
+      h: 2
+      l: 10
+      w: 10
+  - name: 饼干
+    shape: box
+    material: 食物
+    weight: 12
+    dims:
+      h: 0.8
+      l: 8
+      w: 8
+  - name: 软面包2
+    shape: box
+    material: 食物
+    weight: 45
+    dims:
+      h: 2
+      l: 10
+      w: 10
+  - name: 饼干2
+    shape: box
+    material: 食物
+    weight: 12
+    dims:
+      h: 0.8
+      l: 8
+      w: 8
+  - name: 软面包3
+    shape: box
+    material: 食物
+    weight: 45
+    dims:
+      h: 2
+      l: 10
+      w: 10
+  - name: 饼干3
+    shape: box
+    material: 食物
+    weight: 12
+    dims:
+      h: 0.8
+      l: 8
+      w: 8
+  - name: 盘
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  notes: '背景摆放:花、水杯架
+
+    1.桌布上混放着面包片和饼干,先用指腹逐块按压分辨软硬(面包回弹慢、饼干硬挺不动)
+
+    2.软的全部进盘,硬的全部进碗,放的时候轻拿轻放
+
+    3.分拣全程先摸后放,不靠看
+
+    4.分完闭眼复按一遍:碗里的必须块块硬,盘里的块块软
+
+    5.睁眼目测数量核对(软三硬三),两件容器并排摆到面前(O/K/P/L格)'
+- id: 49
+  name: 餐桌_数数舀豆
+  category: 量取分装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 落豆声与手感的对应;盲数听声;指腹拨组验证
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 豆碗
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 15
+      h: 7
+  - name: 黄豆
+    shape: cyl
+    material: 食物
+    weight: 3
+    dims:
+      d: 0.8
+      h: 0.6
+  - name: 小碟
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 9
+      h: 2.5
+  notes: '背景摆放:花、水杯架
+
+    1.用勺从豆碗里舀豆倒进小碟,一次舀五颗(倒的时候心里数数,豆粒落碟声一颗一响)
+
+    2.舀满十颗停手,拨开豆子点数核对(数错加减纠正)
+
+    3.再舀第二轮凑到二十颗,方法同上
+
+    4.全部数完后用指腹在碟里把豆子拨成五个一组排开,一眼验证总数
+
+    5.豆碟放到面前(O/K/P/L格),豆碗复位'
+- id: 50
+  name: 餐桌_剥香蕉切段
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 剥皮的滑脱感;切果肉的绵软阻力;掰断纤维
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 香蕉
+    shape: cyl
+    material: 食物
+    weight: 120
+    dims:
+      d: 3.5
+      h: 19
+  - name: 塑料刀
+    shape: box
+    material: 塑料
+    weight: 30
+    dims:
+      h: 1
+      l: 20
+      w: 2.5
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.捏住香蕉的柄部剥开皮,香蕉皮顺着瓣缝往下翻折,感到果肉从皮里滑脱
+
+    2.把剥好的香蕉平放到盘子上,皮翻在旁边
+
+    3.用塑料刀把香蕉切成两指宽的圆段,切的时候感到果肉绵软,刀落下没有硬阻
+
+    4.切好的段用刀面托着码进盘子摆成串
+
+    5.香蕉皮对折包住刀刃收进垃圾桶(安全收刀),果盘放到面前(O/K/P/L格)'
+- id: 51
+  name: 餐桌_摆筷枕与筷子
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  tactile: 筷尾齐平指扫;插槽触底感;防滑垫压实
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 筷枕
+    shape: box
+    material: 陶瓷
+    weight: 60
+    dims:
+      h: 2
+      l: 6
+      w: 3
+  - name: 筷子
+    shape: cyl
+    material: 木头
+    weight: 14.4
+    dims:
+      d: 0.7
+      h: 25
+  notes: '背景摆放:花、水杯架
+
+    1.把筷枕摆到面前偏右的位置,离盘沿一指宽
+
+    2.把筷子(成双)横架到筷枕上,筷尾朝右伸出两指宽,离桌沿约一指
+
+    3.轻推筷枕微调,筷子与桌边平行
+
+    4.再摆第二副到左侧对称位置,两副的方向、离桌沿距离一致
+
+    5.最后用指腹沿两副筷尾扫一遍确认齐平'
+- id: 52
+  name: 餐桌_手动榨橙汁
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 滚压时果肉变软的手感;压转榨汁时纤维挤压阻力与汁水渗出;杯身重量随果汁增加的变化
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 橙子
+    shape: cyl
+    material: 食物
+    weight: 220
+    dims:
+      d: 7.5
+      h: 7.5
+  - name: 榨汁器
+    shape: cyl
+    material: 塑料
+    weight: 260
+    dims:
+      d: 14
+      h: 10
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 280
+    dims:
+      d: 8
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.双手把橙子在掌心来回滚压几下,感到果肉变软便于出汁
+
+    2.对半切开处的橙子半个扣在榨汁器的凸头上(切口朝下)
+
+    3.手掌按住橙子用力下压同时旋转,感到果肉纤维被挤压、汁水渗出即可,换两三个角度反复压转
+
+    4.端起榨汁器下杯,把果汁沿杯壁倒进水杯
+
+    5.把榨汁器放到右下角(F/C格),果汁放到面前(O/K/P/L格)'
+- id: 53
+  name: 餐桌_双手传递大碗_满碗版
+  category: 传递交换
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 托底感受重量与重心;水面平稳度;放碗先落底的手感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 大碗
+    shape: cyl
+    material: 陶瓷
+    weight: 1800
+    dims:
+      d: 24
+      h: 9
+  notes: '背景摆放:花、水杯架
+
+    1.双手捧起大碗,一手托底一手扶沿,先在面前停一秒感受重量
+
+    1b.碗里装九分满的水(比半碗重不少),起步和停下都要更缓
+
+    2.把大碗平稳传递到对侧席位(N/G格)放下,行走路径避开桌上其他物品,放下时先落底后松手
+
+    3.再从对面把大碗端回面前(O/K/P/L格)
+
+    4.全程碗里的水不洒出来(如有水面晃动,放慢脚步等水平稳再走)
+
+    5.最后把大碗放回开局原位'
+- id: 54
+  name: 餐桌_研磨器磨胡椒
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 档位咔哒;研磨阻力;粒感与香气
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 胡椒研磨器
+    shape: cyl
+    material: 木
+    weight: 260
+    dims:
+      d: 5.5
+      h: 15
+  - name: 牛排碟
+    shape: cyl
+    material: 陶瓷
+    weight: 200
+    dims:
+      d: 16
+      h: 3
+  notes: '背景摆放:花、水杯架
+
+    1.握住胡椒研磨器上端逆时针拧开顶盖检查余量(晃一晃听粒声)
+
+    2.把研磨器调到粗磨档(旋钮感到档位咔哒)
+
+    3.移到牛排碟上方,双手一扶一转均匀研磨十圈,感到胡椒粒被碾碎的阻力与香气
+
+    4.撒完俯视碟面:胡椒颗粒分布均匀,有堆积就拨散
+
+    5.研磨器拧回顶盖立着放回原位'
+- id: 55
+  name: 餐桌_吸管插封膜杯
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 刺破封膜的顿挫与阻力消失;插入深度;轻旋验稳
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 封膜杯
+    shape: cyl
+    material: 塑料
+    weight: 420
+    dims:
+      d: 8
+      h: 13
+  - name: 吸管
+    shape: cyl
+    material: 塑料
+    weight: 2
+    dims:
+      d: 0.8
+      h: 21
+  notes: '背景摆放:花、水杯架
+
+    1.捏住吸管一端把包装纸捻开抽出(纸与吸管之间有滑动感)
+
+    2.找到封膜杯封膜上的十字预切孔
+
+    3.把吸管尖头对准孔位竖直插下,感到尖头刺破封膜的一下顿挫、随后阻力消失即为穿透
+
+    4.继续插到杯身一半深,插的时候手不要晃,防止孔位变大漏液
+
+    5.捏住吸管轻旋半圈确认不晃,杯子放回面前(O/K/P/L格)'
+- id: 56
+  name: 餐桌_筷子扎皮筋入筒
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 捋头尾;皮筋拉伸回弹与扎紧度;触底
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 筷子
+    shape: cyl
+    material: 木头
+    weight: 43.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 皮筋
+    shape: cyl
+    material: 橡胶
+    weight: 1
+    dims:
+      d: 3
+      h: 0.4
+  - name: 筷子筒
+    shape: cyl
+    material: 塑料
+    weight: 208
+    dims:
+      d: 11.4
+      h: 25
+  notes: '背景摆放:花、水杯架
+
+    1.散筷六根先头尾方向捋齐(指腹沿筷身捋过分辨头尾)
+
+    2.六根攥成一把,在筷腰位置用皮筋缠两圈扎紧(皮筋拉伸的回弹感,扎到抽不动)
+
+    3.再取一根皮筋在筷尾位置扎第二道,两道间距三指
+
+    4.扎好的筷把头朝下插进筷子筒,感到触底
+
+    5.轻提筷把确认不滑落,盖回筷子筒盖子(盖沿对正)'
+- id: 57
+  name: 餐桌_叠餐巾纸摞
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 折边压实;四边对齐的指尖校验;抽纸顺滑度
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 餐巾纸摞
+    shape: box
+    material: 纸
+    weight: 100
+    dims:
+      h: 8
+      l: 24
+      w: 24
+  - name: 纸巾盒位
+    shape: box
+    material: 空
+    weight: 0
+    dims:
+      h: 10
+      l: 26
+      w: 26
+  notes: '背景摆放:花、水杯架
+
+    1.散乱的餐巾纸摞逐张对折再对折,折的时候指腹沿折边压平(感到纸的服帖)
+
+    2.折好的纸巾两两对齐叠放,每叠十张用手掌轻压整摞
+
+    3.摞与摞边缘对齐,整摞侧面对光看一遍四边齐平
+
+    4.把整摞餐巾纸摞装回纸巾盒位纸巾盒位,装的时候底面朝下放平
+
+    5.盖回盒盖,抽一张测试能顺畅抽出'
+- id: 58
+  name: 餐桌_简易早餐全套_西式版
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 磕蛋力度;抹酱阻力;刺破顿挫;整体布局的间距手感
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 面包片
+    shape: box
+    material: 食物
+    weight: 40
+    dims:
+      h: 1.5
+      l: 12
+      w: 12
+  - name: 水煮蛋
+    shape: cyl
+    material: 食物
+    weight: 60
+    dims:
+      d: 4.5
+      h: 6
+  - name: 牛奶盒
+    shape: box
+    material: 纸
+    weight: 1000
+    dims:
+      h: 6
+      l: 7
+      w: 18
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 450
+    dims:
+      d: 26
+      h: 2.5
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.准备:盘子摆到面前(O/K/P/L格)正中,水杯摆在右上
+
+    2.煮蛋位:把两个鸡蛋逐个磕进小碗备用(力度控制见磕蛋要领),有碎壳就粘出来
+
+    2b.煮蛋位改为剥一颗水煮蛋切半摆盘(壳膜分离手感)
+
+    3.主餐位:两片面包叠放摆盘,面包上抹一层果酱(阻力感见抹酱要领)
+
+    4.饮品位:给牛奶盒插好吸管(刺破顿挫感)摆到盘右上,再倒一杯牛奶入杯
+
+    5.收尾:餐巾折角压盘沿,整个餐位整体目测:盘杯奶三点一线,间距一指'
+- id: 59
+  name: 餐桌_茶巾擦拭茶盘
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 水渍区摩擦阻力变化;掌贴盘面检查残留;拧巾力度
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 茶巾
+    shape: box
+    material: 棉
+    weight: 50
+    dims:
+      h: 2
+      l: 22
+      w: 16
+  - name: 茶盘
+    shape: box
+    material: 竹
+    weight: 1500
+    dims:
+      h: 3
+      l: 40
+      w: 28
+  notes: '背景摆放:花、水杯架
+
+    1.拿起茶巾对折成方块
+
+    2.从茶盘靠里一侧往外擦,擦的时候手感到盘面有水渍的地方阻力明显更大,重点来回多擦两遍
+
+    3.擦完把手掌平贴盘面检查一遍,摸到粘手的水渍就再补擦
+
+    4.茶巾洗净拧干后对折搭回茶盘边,湿巾放右下角(F/C格)'
+- id: 60
+  name: 餐桌_冰袋冷敷准备_冷热两用版
+  category: 补充场景
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 冰袋凉感与坠手;隔毛巾凉度;发条阻力
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 热敷袋
+    shape: box
+    material: 塑料
+    weight: 400
+    dims:
+      h: 3
+      l: 14
+      w: 11
+  - name: 毛巾
+    shape: box
+    material: 棉
+    weight: 90
+    dims:
+      h: 3
+      l: 30
+      w: 22
+  - name: 定时器
+    shape: cyl
+    material: 塑料
+    weight: 80
+    dims:
+      d: 7
+      h: 3
+  notes: '背景摆放:花、水杯架
+
+    1.拿起热敷袋,先掂一掂感受它的坠手与凉感
+
+    1b.本条用的是热敷袋(温热不烫),摸温度确认是温热后再包毛巾
+
+    2.毛巾对折成两层,把冰袋包进毛巾里(隔着毛巾仍感到凉意,但不刺骨)
+
+    3.包好的冰敷包放到面前(O/K/P/L格)铺平
+
+    4.拧定时器到十五分钟(拧的时候感到发条的阻力,旋到刻度即松手)
+
+    5.把定时器放在冰敷包旁边,等待时每隔五分钟隔着毛巾检查一次冰袋温度'
+- id: 61
+  name: 餐桌_温水杯辨识
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掌心/掌背辨三档水温;闭眼复验;水汽凝露目测交叉验证(安全:水温不烫手)
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 杯
+    shape: cyl
+    material: 陶瓷
+    weight: 600
+    dims:
+      d: 8.5
+      h: 10
+  - name: 杯2
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 8.5
+      h: 10
+  - name: 杯3
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 8.5
+      h: 10
+  - name: 托盘
+    shape: box
+    material: 竹
+    weight: 400
+    dims:
+      h: 2
+      l: 30
+      w: 18
+  notes: '背景摆放:花、水杯架
+
+    1.三只外观一样的杯里分别装着温热水、凉水和常温水(外观无法分辨),先逐只用手掌包裹杯身感受温度
+
+    2.把三只杯按温度从高到低从左到右排在托盘上,排的时候心里默念一遍顺序
+
+    3.排完闭眼再摸一遍验证顺序没有排反
+
+    4.睁眼后揭开杯盖目测:温杯壁应有细小水汽,凉杯壁可能有凝水,验证触觉判断
+
+    5.验证完把温的那杯单独推到面前(O/K/P/L格),托盘复位'
+- id: 62
+  name: 餐桌_三杯均分水
+  category: 量取分装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 并排掂重比较;回倒微调;平视刻度互验
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 扎壶
+    shape: cyl
+    material: 玻璃
+    weight: 700
+    dims:
+      d: 11
+      h: 18
+  - name: 杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  - name: 杯2
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  - name: 杯3
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.扎壶里有大半壶水,先目测总量,心算每杯约取三分之一
+
+    2.轮流给三只杯注水:每杯先倒一小半,轮两三轮补齐,每轮倒量递减
+
+    3.每轮结束后把三只杯并排比对水位(弯腰平视刻度)
+
+    4.差异明显的杯微调:多的往少的回倒一点
+
+    5.三杯并排摆到面前(O/K/P/L格),壶里剩水不超过一杯的量'
+- id: 63
+  name: 餐桌_面包抹果酱
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 抹酱黏滞到顺滑的阻力变化;花生酱的高阻力;对合轻压
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 面包片
+    shape: box
+    material: 食物
+    weight: 40
+    dims:
+      h: 1.5
+      l: 12
+      w: 12
+  - name: 果酱罐
+    shape: cyl
+    material: 玻璃
+    weight: 350
+    dims:
+      d: 8
+      h: 10
+  - name: 抹刀
+    shape: box
+    material: 金属
+    weight: 40
+    dims:
+      h: 0.5
+      l: 18
+      w: 2
+  notes: '背景摆放:花、水杯架
+
+    1.拧开果酱罐盖子放到一边
+
+    2.用抹刀舀一小坨果酱放到面包片中央
+
+    3.用刀面把果酱从中心往外抹开,感到阻力从果酱的黏滞变成面包面的顺滑,抹到四角留边
+
+    4.抹完第二片面包,两片对合成果酱三明治,轻压一下感到合拢
+
+    5.盖回果酱罐,三明治摆进小盘放到面前(O/K/P/L格)'
+- id: 64
+  name: 餐桌_碗碟三件套摆位
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 叠放贴合轻响;闭眼感受距离一致;倒扣器皿翻正的吸附感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碟子
+    shape: cyl
+    material: 陶瓷
+    weight: 260
+    dims:
+      d: 18
+      h: 2
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.把碟子摆在面前(O/K/P/L格)正中,碟沿离桌边两指宽
+
+    2.把碗叠放在碟子上,碗底压住碟心,放下时听声音轻、感到贴合即可,不要磕碰
+
+    3.水杯摆在碟子右上方,杯底离碟沿一指宽
+
+    4.整体后撤看一眼:三件品的中心线在一条竖线上,歪了微调
+
+    5.对侧席位(N/G格)用同样标准再摆一套'
+- id: 65
+  name: 餐桌_调蜂蜜水
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 玻璃罐身防滑握持;蜂蜜拉丝的黏滞阻力;勺子挂蜜后刮杯口的触感;拧盖到位手感
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 蜂蜜罐
+    shape: cyl
+    material: 玻璃
+    weight: 620
+    dims:
+      d: 9
+      h: 13
+  - name: 蜂蜜勺
+    shape: cyl
+    material: 金属
+    weight: 20
+    dims:
+      d: 2.5
+      h: 15
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10.5
+  - name: 电热水壶
+    shape: cyl
+    material: 塑料
+    weight: 766
+    dims:
+      d: 15
+      h: 22
+  notes: '背景摆放:花、水杯架
+
+    1.双手握住蜂蜜罐拧开盖子,蜂蜜罐玻璃瓶身滑,握的时候手掌贴紧罐身
+
+    2.用蜂蜜勺伸进罐里顺时针搅半圈舀起一勺蜂蜜,勺子提起时会拉丝,倾斜手腕让蜂蜜流进水杯,粘在勺上的蜂蜜在杯口刮两下抖净
+
+    3.提电热水壶往水杯里倒温水到八分满,再用长勺搅到蜂蜜完全化开(杯底没有粘底感)
+
+    4.拧回蜂蜜罐盖子,把蜂蜜罐放回原位,蜂蜜水放到面前(O/K/P/L格)'
+- id: 66
+  name: 餐桌_左右手交换物品_五杯版
+  category: 传递交换
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掂重辨水杯;闭眼交接时的指尖定位
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 杯子
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  - name: 杯子2
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  - name: 杯子3
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  - name: 杯子4
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  - name: 杯子5
+    shape: cyl
+    material: 金属
+    weight: 180
+    dims:
+      d: 7
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.面前(O/K/P/L格)从左到右摆着三只杯
+
+    2.左手拿最左、右手拿最右,双手在胸前交换两只杯的位置后放回原格(交换时杯口都朝上,别让杯沿相碰)
+
+    3.再交换中间杯和左杯,回到起始状态
+
+    4.最后三只杯做一次轮转:左到中、中到右、右到左
+
+    4b.五只杯做两次轮转,节奏放稳
+
+    5.全程目光看杯口防碰撞,结束时三只杯仍一条直线'
+- id: 67
+  name: 餐桌_削皮器削黄瓜_胡萝卜版
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 刀口滑过与卡顿补削;黄瓜/胡萝卜硬度差异;左手反向操作
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 胡萝卜
+    shape: cyl
+    material: 食物
+    weight: 150
+    dims:
+      d: 3
+      h: 18
+  - name: 削皮器
+    shape: box
+    material: 金属
+    weight: 40
+    dims:
+      h: 1
+      l: 12
+      w: 6
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.左手竖握胡萝卜中部,右手持削皮器贴住瓜身
+
+    2.从上往下削出第一条皮,感到刀口顺畅滑过、皮条连成长条落下,皮直接削进盘子
+
+    2b.胡萝卜更硬,削的时候下压力度更实,皮条更脆易断
+
+    3.转动胡萝卜逐条削,每条接上一条的边缘,削到整根露出浅色瓜肉
+
+    4.摸一遍瓜身:有残留的深绿硬块(瓜刺疤)就是没削净的地方,重点补削(感到刀口卡顿)
+
+    5.削净的胡萝卜平放盘子,削皮器刀面朝下收好'
+- id: 68
+  name: 餐桌_笔插笔筒
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 落底触感;缝隙寻找;盲插一致性
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 笔筒
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 9
+      h: 12
+  - name: 笔
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 笔2
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 笔3
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  notes: '背景摆放:花、水杯架
+
+    1.三支笔笔帽都先按紧(按到感到帽扣进笔杆的轻响)
+
+    2.把笔笔尖朝下插进笔筒,插到笔尾触到筒底(感到落底的一下)
+
+    3.第二支、第三支错开角度插放,笔在筒里互相靠稳不倒
+
+    4.轻晃笔筒听声:没有笔杆碰撞的哐当声说明插放紧凑
+
+    5.笔筒摆到面前偏右位置,三支笔尾露出筒口的高度错落有致'
+- id: 69
+  name: 餐桌_调料归位转盘
+  category: 收纳归位
+  modalities:
+  - 视觉
+  tactile: 拧紧盖子;转盘顺滑与惯性;重心布局
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 桌面转盘
+    shape: cyl
+    material: 塑料
+    weight: 600
+    dims:
+      d: 30
+      h: 4
+  - name: 盐瓶
+    shape: cyl
+    material: 玻璃
+    weight: 220
+    dims:
+      d: 5.5
+      h: 12
+  - name: 醋瓶
+    shape: cyl
+    material: 玻璃
+    weight: 260
+    dims:
+      d: 6
+      h: 16
+  - name: 辣油瓶
+    shape: cyl
+    material: 玻璃
+    weight: 240
+    dims:
+      d: 6
+      h: 14
+  notes: '背景摆放:花、水杯架
+
+    1.把桌面转盘放到桌面中心(N/G格)
+
+    2.三只调料瓶按固定顺序(盐-醋-辣油)摆上转盘外圈,间距均匀
+
+    3.转动转盘一圈(感到轴承顺滑),检查每只瓶不倒不晃
+
+    4.把常用的盐瓶转到正对门口的方向停下
+
+    5.轻拍转盘边缘验证惯性停下后瓶位不变,整套归位'
+- id: 70
+  name: 餐桌_湿巾粘米粒
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 粘粒阻力;捻粒脱落;掌心滑过验残留
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 湿巾
+    shape: box
+    material: 无纺布
+    weight: 15
+    dims:
+      h: 0.2
+      l: 20
+      w: 15
+  - name: 米粒堆
+    shape: box
+    material: 食物
+    weight: 10
+    dims:
+      h: 0.3
+      l: 12
+      w: 12
+  - name: 小碗
+    shape: cyl
+    material: 陶瓷
+    weight: 200
+    dims:
+      d: 11
+      h: 6
+  notes: '背景摆放:花、水杯架
+
+    1.展开一张湿巾平铺手掌上
+
+    2.用手掌把湿巾轻按在米粒堆散落区再提起来,感到米粒被粘住的细微阻力,粘起一片
+
+    3.把粘到的米粒对着小碗捻下来,捻的时候指腹感到颗粒脱落
+
+    4.重复粘捻直到桌面摸不到颗粒残留(掌心滑过无硌感)
+
+    5.米粒全部进小碗,湿巾对折丢进垃圾桶,小碗放到面前(O/K/P/L格)'
+- id: 71
+  name: 餐桌_茶待客三步_盖碗版
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 温杯升温;提壶掂重;奉茶双手稳定
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 盖碗
+    shape: cyl
+    material: 陶瓷
+    weight: 200
+    dims:
+      d: 9
+      h: 8
+  - name: 公道杯
+    shape: cyl
+    material: 玻璃
+    weight: 380
+    dims:
+      d: 10
+      h: 11
+  - name: 茶杯
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶杯2
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 7
+      h: 5.5
+  - name: 茶盘
+    shape: box
+    material: 竹
+    weight: 1500
+    dims:
+      h: 3
+      l: 40
+      w: 28
+  notes: '背景摆放:花、水杯架
+
+    1.温杯:热水依次涮烫三只茶杯,杯壁热起后倒掉涮水(捧杯转涮手感)
+
+    2.冲泡:茶则量茶入壶,注水后静置约一分钟(提壶掂重感受水量的变化)
+
+    2b.改用盖碗出汤(持碗出汤要领),汤进公道杯再分
+
+    3.分茶:按客人位-自己位的顺序巡回分茶到七分满,先客后己
+
+    4.奉茶:双手把第一杯茶推送到对侧席位(N/G格)客人位,杯柄转向客人
+
+    5.收尾:壶盖虚掩,壶嘴不对人,茶盘擦净水渍'
+- id: 72
+  name: 餐桌_温杯烫盏_五杯版
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 捧杯转涮时杯壁升温;茶夹夹烫杯的力度;倒水防溅的姿态控制
+  difficulty: 中等
+  background: 花、水杯架
+  objects: *id001
+  notes: '背景摆放:花、水杯架
+
+    1.提茶壶往第一只茶杯里倒热水到七分满,端起茶杯双手捧住转一圈让热水涮过杯壁,手感杯壁热起来
+
+    1b.烫五只杯,杯壁热度一次比一次低属正常,最后统一补烫一遍
+
+    2.把涮杯水倒进水盂,倒的时候杯口贴近水盂防溅
+
+    3.同样的方法烫第二只、第三只杯,烫完的杯子用茶巾擦掉杯底水渍
+
+    4.三只杯子杯柄朝右、一字排开摆到面前(O/K/P/L格),茶壶放回原位'
+- id: 73
+  name: 餐桌_桌面文具归位_分类笔版
+  category: 补充场景
+  modalities:
+  - 视觉
+  tactile: 帽扣轻响;指尖捏针;掌扫查漏
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 黑笔
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 黑笔2
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 红笔
+    shape: cyl
+    material: 塑料
+    weight: 12
+    dims:
+      d: 1
+      h: 15
+  - name: 笔筒
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 9
+      h: 12
+  - name: 笔筒2
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 9
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.散笔逐支笔帽按紧(帽扣轻响)后笔尖朝下插进笔筒,感到落底
+
+    1b.黑红两色笔分插两筒(颜色视觉+插放手感)
+
+    2.散落的回形针逐枚捡进回形针盒(指尖捏针的细致动作,注意别让针弹飞)
+
+    3.摇一摇回形针盒听声核对数量不少于五枚
+
+    4.橡皮、尺子归到桌角收纳位对齐放好
+
+    5.掌心扫过桌面确认无遗漏小物(指尖感到残留就捡起)'
+- id: 74
+  name: 餐桌_筷子盲配对
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 捻筷身辨刻纹/光面;搓动阻力一致性;长短尺寸盲比
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 刻纹筷
+    shape: cyl
+    material: 木头
+    weight: 7.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 光面筷
+    shape: cyl
+    material: 木头
+    weight: 7.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 刻纹筷2
+    shape: cyl
+    material: 木头
+    weight: 7.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 光面筷2
+    shape: cyl
+    material: 木头
+    weight: 7.2
+    dims:
+      d: 0.7
+      h: 25
+  - name: 筷枕
+    shape: box
+    material: 陶瓷
+    weight: 60
+    dims:
+      h: 2
+      l: 6
+      w: 3
+  notes: '背景摆放:花、水杯架
+
+    1.四根筷子混放,闭眼用拇指食指捻每根筷身:有刻纹的涩、光面的滑,把同款归成两堆
+
+    2.每堆两根并拢在掌心搓一下确认同款(搓动阻力一致)
+
+    3.睁眼核对:刻纹筷一对、光面筷一对,颜色若有差异说明配错,重新闭眼配
+
+    4.两对筷子分别架到两个筷枕上,刻纹对放左
+
+    5.最后再闭眼逐对捻一遍筷尾确认没放反'
+- id: 75
+  name: 餐桌_漏斗分装盐
+  category: 量取分装
+  modalities:
+  - 视觉
+  tactile: 盐流连续性;弹漏斗振盐;两瓶等高的目测
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 盐碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 12
+      h: 6
+  - name: 漏斗
+    shape: cyl
+    material: 塑料
+    weight: 40
+    dims:
+      d: 10
+      h: 10
+  - name: 调味瓶
+    shape: cyl
+    material: 玻璃
+    weight: 220
+    dims:
+      d: 5.5
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.漏斗插进调味瓶瓶口插正
+
+    2.用小勺从盐碗舀盐灌进漏斗,盐流应细而连续,灌到瓶身三分之二处停
+
+    3.灌的时候有盐粒挂在漏斗壁,用指尖弹漏斗颈把余盐振下去
+
+    4.取出漏斗,拧紧调味瓶盖
+
+    5.两只调味瓶都灌好(第二瓶灌到同样高度),并排摆到面前(O/K/P/L格)'
+- id: 76
+  name: 餐桌_掰馒头摆盘
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 松软度捏感;纤维撕开的渐进阻力;杂粮紧实度对比
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 馒头
+    shape: cyl
+    material: 食物
+    weight: 100
+    dims:
+      d: 9
+      h: 5
+  - name: 盘子
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 18
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.双手捧住馒头感受松软度,太硬的先捏一捏回软
+
+    2.从中间掰开,感到馒头内部的纤维被慢慢撕开(不要猛掰掉渣)
+
+    3.每半再掰成两块,掰口朝上摆进盘子
+
+    4.掉在桌面的渣用手掌拢成一小堆倒进垃圾桶
+
+    5.馒头盘放到面前(O/K/P/L格)'
+- id: 77
+  name: 餐桌_纸巾折花摆盘
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  tactile: 折痕压实的服帖感;指节比齐褶宽;布巾定型握边
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 餐巾纸
+    shape: box
+    material: 纸
+    weight: 5
+    dims:
+      h: 0.5
+      l: 30
+      w: 30
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 10
+  notes: '背景摆放:花、水杯架
+
+    1.取一张餐巾纸平铺桌面,先折成对折压出折痕(指腹沿着折边压一遍,感到纸服帖)
+
+    2.再按扇形折法折出四五道波浪褶,每道褶宽度用指节比齐
+
+    3.把折好的纸巾花插进水杯杯口,褶子朝上展开成扇面
+
+    4.微调纸巾花角度让扇面正对用餐者
+
+    5.再折第二只摆到旁边,两只高度、扇面开度一致'
+- id: 78
+  name: 餐桌_冲藕粉
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 撕袋口的阻力消失感;调糊阶段的均匀阻力;热水冲入瞬间由稀变稠的阻力突变
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 藕粉袋
+    shape: box
+    material: 塑料
+    weight: 320
+    dims:
+      h: 4
+      l: 18
+      w: 10
+  - name: 水杯
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 9
+      h: 10
+  - name: 勺子
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  - name: 电热水壶
+    shape: cyl
+    material: 塑料
+    weight: 766
+    dims:
+      d: 15
+      h: 22
+  notes: '背景摆放:花、水杯架
+
+    1.捏住藕粉袋袋口的撕口沿虚线撕开,撕到阻力突然消失即开口,注意别撕太大撒粉
+
+    2.往水杯里倒约三勺藕粉袋的粉,先加一点凉水,用勺子把粉调成能流动的糊(搅起来阻力均匀、没有干粉疙瘩)
+
+    3.提起电热水壶一边冲热水一边快速搅拌,水冲下去的瞬间糊会突然变稠变透,感到勺子阻力明显加大就放慢冲水
+
+    4.搅到整杯呈半透明状、提起勺子能挂住薄糊即可
+
+    5.把藕粉杯放到面前(O/K/P/L格),粉袋用封口夹夹好放回右下角(F/C格)'
+- id: 79
+  name: 餐桌_两物换位不碰撞_玻璃杯版
+  category: 传递交换
+  modalities:
+  - 视觉
+  tactile: 玻璃与陶器不同的握持力度;错层路径的高度控制
+  difficulty: 简单
+  background: 花、水杯架
+  objects: *id002
+  notes: '背景摆放:花、水杯架
+
+    1.玻璃杯和糖罐分别摆在面前左右两侧
+
+    2.双手同时各拿起一件,在空中交换位置后放回对方原来的位置(交换路径一高一低错开,防止相撞)
+
+    3.放下时对准原来的印记,轻放
+
+    4.重复交换三次,三次路径可以变化但都不许碰撞
+
+    5.结束后两件物品位置互换、方向与开局一致'
+- id: 80
+  name: 餐桌_剪刀剪包装_锯齿袋版
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 剪刃咬合的咔感;铝箔高阻力;剪断瞬间失阻
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 铝箔袋
+    shape: box
+    material: 铝箔
+    weight: 120
+    dims:
+      h: 5
+      l: 20
+      w: 14
+  - name: 剪刀
+    shape: box
+    material: 金属
+    weight: 90
+    dims:
+      h: 1.5
+      l: 20
+      w: 8
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 14
+      h: 7
+  notes: '背景摆放:花、水杯架
+
+    1.拇指食指入剪刀指环,先空剪两下感受开合阻力
+
+    2.把铝箔袋立住,从袋口剪开一条直线,感到剪刃咬合前进、每一下都有轻微的咔感
+
+    2b.铝箔袋硬挺,剪的时候阻力更大,分两三次剪完
+
+    3.剪开的口对着碗把内容物倒进去
+
+    4.剪刀对合刀刃朝里放回桌面右侧
+
+    5.把剪平的包装纸边条丢进垃圾桶'
+- id: 81
+  name: 餐桌_花插花瓶
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 花茎触底与瓶口吃合;交叉卡稳;插花泥咬住感
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 小花瓶
+    shape: cyl
+    material: 玻璃
+    weight: 400
+    dims:
+      d: 8
+      h: 18
+  - name: 仿真花
+    shape: cyl
+    material: 塑料
+    weight: 30
+    dims:
+      d: 1
+      h: 35
+  - name: 仿真花2
+    shape: cyl
+    material: 塑料
+    weight: 30
+    dims:
+      d: 1
+      h: 32
+  notes: '背景摆放:花、水杯架
+
+    1.先往小花瓶里倒三分之一清水(瓶身滑,一手托底一手扶颈)
+
+    2.第一支仿真花斜口剪过的一端朝下插入瓶口,感到花茎触到瓶底、瓶口吃住茎身
+
+    3.第二支反向角度插入,两支在瓶口十字交叉卡稳(轻推不倒)
+
+    4.调花头朝向:一支朝左一支朝右,高度一高一低
+
+    5.最后补一枝短花插正中间,俯视三支呈扇面,花瓶放回面前(O/K/P/L格)'
+- id: 82
+  name: 餐桌_餐具入筐分格_两套版
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 插格触底;盲辨柄型;晃筐听声
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 餐具筐
+    shape: box
+    material: 塑料
+    weight: 300
+    dims:
+      h: 12
+      l: 30
+      w: 22
+  - name: 勺子
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  - name: 勺子2
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  - name: 叉子
+    shape: cyl
+    material: 金属
+    weight: 40
+    dims:
+      d: 1
+      h: 19
+  - name: 叉子2
+    shape: cyl
+    material: 金属
+    weight: 40
+    dims:
+      d: 1
+      h: 19
+  - name: 餐刀
+    shape: box
+    material: 金属
+    weight: 90
+    dims:
+      h: 1
+      l: 22
+      w: 2
+  - name: 餐刀2
+    shape: box
+    material: 金属
+    weight: 90
+    dims:
+      h: 1
+      l: 22
+      w: 2
+  notes: '背景摆放:花、水杯架
+
+    1.把餐具筐摆到面前(O/K/P/L格),认清三个隔格的分工(左勺中叉右刀)
+
+    2.散放的餐具逐件辨认后插进对应隔格,插的时候柄朝下、感到触底
+
+    2b.两套餐具混放,按类型+套别分进两筐,柄上刻痕区分套别
+
+    3.每插一件就用指尖在格口拨一下,确认与本格类型一致
+
+    4.三格都插完后端起餐具筐轻晃:没有哐当碰撞声说明插放紧凑
+
+    5.餐具筐归位到桌角,刀刃朝内'
+- id: 83
+  name: 餐桌_漏斗辅助回装
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 漏斗卡瓶口的支撑感;倒豆的连续声与手感;余豆控净
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 漏斗
+    shape: cyl
+    material: 塑料
+    weight: 40
+    dims:
+      d: 10
+      h: 10
+  - name: 玻璃瓶
+    shape: cyl
+    material: 玻璃
+    weight: 500
+    dims:
+      d: 10
+      h: 20
+  - name: 散豆碗
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 15
+      h: 7
+  notes: '背景摆放:花、水杯架
+
+    1.把漏斗插进玻璃瓶瓶口,感到锥面卡进瓶口的支撑感(插正,不歪)
+
+    2.端起散豆碗沿漏斗内壁缓缓倒回豆子,倒的时候听到豆粒滚动声连续不断
+
+    3.倒到最后用手指把碗壁粘的豆子拨进漏斗(指尖拨豆的手感)
+
+    4.提起漏斗控两秒让余豆落净,漏斗取出
+
+    5.拧紧玻璃瓶盖子,晃一下听声核对量,瓶子放回原位'
+- id: 84
+  name: 餐桌_甜品台组装_双层版
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 插烛到位;稳放不滚;折痕压实
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 纸杯蛋糕
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 纸杯蛋糕2
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 纸杯蛋糕3
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 纸杯蛋糕4
+    shape: cyl
+    material: 食物
+    weight: 90
+    dims:
+      d: 6
+      h: 6
+  - name: 蛋糕架
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 22
+      h: 20
+  - name: 蜡烛
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 蜡烛2
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 蜡烛3
+    shape: cyl
+    material: 石蜡
+    weight: 6
+    dims:
+      d: 0.6
+      h: 12
+  - name: 大盘
+    shape: cyl
+    material: 陶瓷
+    weight: 600
+    dims:
+      d: 30
+      h: 3
+  notes: '背景摆放:花、水杯架
+
+    1.底盘:大盘摆到面前(O/K/P/L格)中心
+
+    2.蛋糕:三只纸杯蛋糕在盘上摆成三角阵形,间距两指
+
+    2b.用蛋糕架摆双层:上层两只下层四只,取放上层的动作要更稳
+
+    3.插烛:每只蛋糕中央插一根蜡烛,插深一致(阻力到位感),逐根轻晃验稳
+
+    4.点缀:两粒葡萄对切成半,切面朝下摆在蛋糕间隙(指腹稳放不滚)
+
+    5.纸巾:折成扇形插在杯口做装饰(折痕压实感),成品整体俯视对称'
+- id: 85
+  name: 餐桌_公道杯分茶_三杯版
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 分茶时手腕稳定收水;公道杯轻重随茶汤减少的变化
+  difficulty: 中等
+  background: 花、水杯架
+  objects: *id003
+  notes: '背景摆放:花、水杯架
+
+    1.端起公道杯先晃两下让茶汤混匀
+
+    2.把茶汤轮流分进三只茶杯:每杯先倒一半,轮完一圈再补第二轮,分到每杯七分满
+
+    3.分的时候杯数多就沿着排面从左往右再折返,手腕保持稳定,断水时壶嘴轻轻一提收水
+
+    4.分完把公道杯里剩的茶汤倒进茶盘的排水口,公道杯放回原位
+
+    5.把分好的茶杯摆到面前(O/K/P/L格)一字排开'
+- id: 86
+  name: 餐桌_小物形状归位_六块版
+  category: 补充场景
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 闭眼辨形;嵌入无翘动;摇盒听声
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 收纳盒
+    shape: box
+    material: 塑料
+    weight: 250
+    dims:
+      h: 6
+      l: 24
+      w: 18
+  - name: 方块
+    shape: box
+    material: 木
+    weight: 20
+    dims:
+      h: 3
+      l: 3
+      w: 3
+  - name: 方块2
+    shape: box
+    material: 木
+    weight: 20
+    dims:
+      h: 3
+      l: 3
+      w: 3
+  - name: 圆柱
+    shape: cyl
+    material: 木
+    weight: 15
+    dims:
+      d: 3
+      h: 3
+  - name: 圆柱2
+    shape: cyl
+    material: 木
+    weight: 15
+    dims:
+      d: 3
+      h: 3
+  - name: 长条
+    shape: cyl
+    material: 木
+    weight: 10
+    dims:
+      d: 1.5
+      h: 6
+  - name: 长条2
+    shape: cyl
+    material: 木
+    weight: 10
+    dims:
+      d: 1.5
+      h: 6
+  notes: '背景摆放:花、水杯架
+
+    1.收纳盒内有三形状凹槽(方/圆/长条),先闭眼摸一遍槽型记牢
+
+    2.散放的木块逐块闭眼辨认形状(方块的棱角/圆柱的弧面/长条的比例)后放入对应凹槽
+
+    2b.六块三形状各两块,同形状并排嵌放
+
+    3.每放一块轻按一下,感到块底完全嵌入槽底(无翘动)
+
+    4.放完盖上盒盖(卡扣到位),摇一摇听声:无滚动碰撞即全部嵌稳
+
+    5.睁眼开盖核对形状与槽位一一对应,错的取出重放'
+- id: 87
+  name: 餐桌_瓶盖分拣
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 闭眼辨盖缘光滑/浮凸/棱齿与金属凉感;拨格复核
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 大瓶盖
+    shape: cyl
+    material: 塑料
+    weight: 8
+    dims:
+      d: 4.5
+      h: 1.5
+  - name: 小瓶盖
+    shape: cyl
+    material: 塑料
+    weight: 5
+    dims:
+      d: 3
+      h: 1.2
+  - name: 大瓶盖2
+    shape: cyl
+    material: 塑料
+    weight: 8
+    dims:
+      d: 4.5
+      h: 1.5
+  - name: 小瓶盖2
+    shape: cyl
+    material: 塑料
+    weight: 5
+    dims:
+      d: 3
+      h: 1.2
+  - name: 罐盖
+    shape: cyl
+    material: 金属
+    weight: 12
+    dims:
+      d: 5
+      h: 1.5
+  - name: 罐盖2
+    shape: cyl
+    material: 金属
+    weight: 12
+    dims:
+      d: 5
+      h: 1.5
+  - name: 分格盒
+    shape: box
+    material: 塑料
+    weight: 120
+    dims:
+      h: 4
+      l: 24
+      w: 12
+  notes: '背景摆放:花、水杯架
+
+    1.六只瓶盖混放,闭眼逐只拿起辨认:大塑盖边缘光滑、小塑盖轻而小、金属盖冰凉有棱齿
+
+    2.按三种类型分进分格盒的三个隔格,放的时候盖沿触底
+
+    3.每格放完用指尖拨一遍确认本格类型一致
+
+    4.睁眼核对颜色分界(不同类盖颜色不同),分错的取回重摸
+
+    5.把金属盖那格正对自己摆到面前(O/K/P/L格)'
+- id: 88
+  name: 餐桌_量勺量米_三杯版
+  category: 量取分装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 刮平米面的涩感;米流连续性;卷袋口的手感
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 米袋
+    shape: box
+    material: 塑料
+    weight: 2000
+    dims:
+      h: 12
+      l: 30
+      w: 20
+  - name: 量杯
+    shape: cyl
+    material: 塑料
+    weight: 60
+    dims:
+      d: 10
+      h: 12
+  - name: 饭煲内胆
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 22
+      h: 12
+  - name: 封口夹
+    shape: box
+    material: 塑料
+    weight: 20
+    dims:
+      h: 1.5
+      l: 11
+      w: 2
+  notes: '背景摆放:花、水杯架
+
+    1.把量杯插进米袋舀满一杯米,用手指沿杯口刮平(指尖感到米面刮平的涩感)
+
+    2.把量杯里的米倒进饭煲内胆,倒的时候米粒冲击内胆的哗声应连续
+
+    2b.量三杯,每杯都刮平,最后目测米面高度一致
+
+    3.再量第二杯,两杯之间量法一致(刮平力度相同)
+
+    4.把饭煲内胆端平晃两下让米面平整,目测两杯米的刻度位置
+
+    5.米袋口卷紧用封口夹夹好,饭煲内胆放到面前(O/K/P/L格)'
+- id: 89
+  name: 餐桌_包饺子
+  category: 食物处理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 皮的干湿;每道褶的压实粘合感;漏馅处的即时反馈;盲捏
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 饺子皮
+    shape: cyl
+    material: 食物
+    weight: 8
+    dims:
+      d: 8
+      h: 0.15
+  - name: 饺子馅碗
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 12
+      h: 6
+  - name: 馅勺
+    shape: cyl
+    material: 金属
+    weight: 15
+    dims:
+      d: 2
+      h: 12
+  - name: 托盘
+    shape: box
+    material: 塑料
+    weight: 200
+    dims:
+      h: 2
+      l: 30
+      w: 20
+  notes: '背景摆放:花、水杯架
+
+    1.左手托一张饺子皮在掌心,用馅勺舀一小团馅放到皮中心(馅量以一指节大小为准)
+
+    2.手指蘸水沿皮边缘抹半圈(指尖感到皮的干湿差异)
+
+    3.对折捏合中间一点,然后从中间往两边依次捏出褶子,每捏一道都感到两层面皮压实粘住
+
+    4.捏完在掌心轻握一下整形,放到托盘上,饺子之间留一指间距防止粘连
+
+    5.按上面方法包五个,摆成两排,托盘放到面前(O/K/P/L格)'
+- id: 90
+  name: 餐桌_公筷公勺摆放
+  category: 餐桌布置
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 盲辨长短摸公筷;勺架卡稳感
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 公筷
+    shape: cyl
+    material: 木头
+    weight: 16
+    dims:
+      d: 0.8
+      h: 27
+  - name: 公勺
+    shape: cyl
+    material: 陶瓷
+    weight: 70
+    dims:
+      d: 6
+      h: 18
+  - name: 小碟
+    shape: cyl
+    material: 陶瓷
+    weight: 150
+    dims:
+      d: 10
+      h: 2
+  notes: '背景摆放:花、水杯架
+
+    1.把小碟摆在桌面中心(N/G格)
+
+    2.公筷横架在小碟上,筷尾朝右
+
+    3.公勺勺柄朝左搭在小碟前侧,勺窝朝上
+
+    4.公筷公勺与自用餐具区分开(公筷更长、颜色不同),摆放后用目测+指触确认没有和自用筷混放
+
+    5.整体摆完后从四个方向各看一眼,中心对称'
+- id: 91
+  name: 餐桌_开罐倒汽水加冰
+  category: 饮品制作
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 冰块湿滑的夹取力度;拉环的阻力峰值与翻转手感;倒汽水时罐身轻重的变化
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 易拉罐
+    shape: cyl
+    material: 金属
+    weight: 370
+    dims:
+      d: 6.6
+      h: 12.3
+  - name: 水杯
+    shape: cyl
+    material: 玻璃
+    weight: 320
+    dims:
+      d: 8.5
+      h: 11
+  - name: 冰碗
+    shape: cyl
+    material: 玻璃
+    weight: 400
+    dims:
+      d: 13
+      h: 7
+  - name: 冰夹
+    shape: box
+    material: 金属
+    weight: 40
+    dims:
+      h: 2
+      l: 16
+      w: 2
+  notes: '背景摆放:花、水杯架
+
+    1.从冰碗里用冰夹夹三块冰放进水杯,冰块表面湿滑,夹的时候稳住再提起
+
+    2.拿起易拉罐,食指扣住拉环向上掀开,拉环掀到一半会有明显的阻力峰值,过峰后贴着罐口完全翻开
+
+    3.把易拉罐倾斜沿杯壁缓缓倒进水杯,汽水泡沫涨起来就停一停再倒,倒到八分满
+
+    4.空罐捏一下再放进垃圾桶(确认喝空),把加冰汽水放到面前(O/K/P/L格)'
+- id: 92
+  name: 餐桌_掂重排序_五罐版
+  category: 传递交换
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 掂重分辨三档重量;闭眼复核
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 罐子
+    shape: cyl
+    material: 金属
+    weight: 200
+    dims:
+      d: 8
+      h: 12
+  - name: 罐子2
+    shape: cyl
+    material: 金属
+    weight: 350
+    dims:
+      d: 8
+      h: 12
+  - name: 罐子3
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 8
+      h: 12
+  - name: 罐子4
+    shape: cyl
+    material: 金属
+    weight: 650
+    dims:
+      d: 8
+      h: 12
+  - name: 罐子5
+    shape: cyl
+    material: 金属
+    weight: 800
+    dims:
+      d: 8
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.三只外形一样的罐子散放在面前,先逐只拿起掂重(每只掂两下,手腕小幅上下晃),感受三档不同的重量
+
+    1b.五只罐五档重量,先用两两对比法(拿起两只留重的)淘汰排序
+
+    2.按从轻到重排成一条直线摆到面前(O/K/P/L格)
+
+    3.排完再逐只复核一遍掂重顺序,发现错误就调整
+
+    4.复核无误后,在最重的罐子上叠一只小碗作为标记
+
+    5.最后闭眼按轻到重的顺序逐只指一遍,指错重来'
+- id: 93
+  name: 餐桌_开瓶器开红酒_摆塞版
+  category: 工具使用
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 螺旋吃进木塞的逐扣阻力;拔塞瞬间一松;锡纸脆裂
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 红酒瓶
+    shape: cyl
+    material: 玻璃
+    weight: 1200
+    dims:
+      d: 8
+      h: 30
+  - name: 海马刀
+    shape: box
+    material: 金属
+    weight: 130
+    dims:
+      h: 2
+      l: 12
+      w: 3
+  - name: 小碟
+    shape: cyl
+    material: 陶瓷
+    weight: 150
+    dims:
+      d: 10
+      h: 2
+  - name: 红酒杯
+    shape: cyl
+    material: 玻璃
+    weight: 200
+    dims:
+      d: 9
+      h: 20
+  notes: '背景摆放:花、水杯架
+
+    1.撕开瓶口的锡纸帽沿撕口,感到锡纸被撕开的脆裂
+
+    2.把海马刀的螺旋针对准软木塞中心旋入,感到螺旋一扣一扣吃进木塞(阻力均匀),旋入约五圈留一圈
+
+    3.把刀头一级卡在瓶口,握住刀柄向上提,感到木塞被缓缓拔出、瓶口漏气的轻响,提到手感一松木塞脱出
+
+    4.用二级卡口再提一次把木塞完全拔净,闻一下木塞下端(酒没有变质异味)
+
+    4b.拔出的木塞平放到小碟上展示(整根不带断屑)
+
+    5.沿杯壁倒三分之一杯,酒瓶立回右下角(F/C格),酒杯放到面前(O/K/P/L格)'
+- id: 94
+  name: 餐桌_磁吸封口夹封袋
+  category: 插入封装
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 排气推压;折边压实;磁吸咬合与提拉验稳
+  difficulty: 简单
+  background: 花、水杯架
+  objects:
+  - name: 零食袋
+    shape: box
+    material: 塑料
+    weight: 90
+    dims:
+      h: 5
+      l: 20
+      w: 14
+  - name: 封口夹
+    shape: box
+    material: 塑料
+    weight: 25
+    dims:
+      h: 1.5
+      l: 11
+      w: 2
+  - name: 封口夹2
+    shape: box
+    material: 塑料
+    weight: 25
+    dims:
+      h: 1.5
+      l: 11
+      w: 2
+  notes: '背景摆放:花、水杯架
+
+    1.把零食袋里空气压出来:双手从袋底往袋口推平(掌心感到袋内气体被排出)
+
+    2.袋口对折折两道,折边压实
+
+    3.用封口夹从折边内侧夹住,双手捏夹臂听到磁吸/卡扣咬合的轻响,捏一下确认夹紧(抽不动袋口)
+
+    4.轻提夹子把袋子悬空提两秒,袋子不滑脱
+
+    5.封好的袋子立靠在桌角,第二个袋子同样封好并排靠放'
+- id: 95
+  name: 餐桌_挂杯沥水架_两排版
+  category: 收纳归位
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 杯沿吃钩、脱钩瞬间;轻拨验稳
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 沥水架
+    shape: box
+    material: 金属
+    weight: 800
+    dims:
+      h: 26
+      l: 40
+      w: 15
+  - name: 玻璃杯
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯2
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯3
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯4
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯5
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  - name: 玻璃杯6
+    shape: cyl
+    material: 玻璃
+    weight: 300
+    dims:
+      d: 8
+      h: 12
+  notes: '背景摆放:花、水杯架
+
+    1.把沥水架摆稳在面前(O/K/P/L格)
+
+    2.拿起玻璃杯杯口朝下挂上第一排挂钩,感到杯沿吃进钩弯、松手不落
+
+    3.三只杯依次挂满一排,间距均匀不相互磕碰
+
+    3b.上下两排都挂满,先挂上排(危险系数低的顺序)
+
+    4.逐只轻拨检查挂稳度(有松动的重新挂钩)
+
+    5.沥出的水滴净后(等十秒),把杯子收进柜格或保持悬挂'
+- id: 96
+  name: 餐桌_抖桌布铺平
+  category: 清洁整理
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 抖开的啪声与气流;推平褶皱;整体平移不起褶
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 桌布
+    shape: box
+    material: 布
+    weight: 400
+    dims:
+      h: 0.5
+      l: 140
+      w: 80
+  notes: '背景摆放:花、水杯架
+
+    1.双手捏住桌布两角把它提离桌面
+
+    2.手腕发力向上一抖,听到布面展平的啪声、感到布内空气被抖开
+
+    3.对准桌面居中落下,先落远端再落近端
+
+    4.手掌从中心向四边推平,四角下垂长度比齐
+
+    5.俯视检查布边与桌边平行,歪了整体平移纠正(推的时候整张布一起动,不起褶)'
+- id: 97
+  name: 餐桌_野餐盒组装_双盒版
+  category: 综合流程
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 拉链全程手感;扣盖咔哒;包纸裹紧;晃袋听声
+  difficulty: 困难
+  background: 花、水杯架
+  objects:
+  - name: 饭盒袋
+    shape: box
+    material: 布
+    weight: 300
+    dims:
+      h: 20
+      l: 26
+      w: 14
+  - name: 三明治盒
+    shape: box
+    material: 塑料
+    weight: 150
+    dims:
+      h: 6
+      l: 16
+      w: 12
+  - name: 饭盒
+    shape: box
+    material: 塑料
+    weight: 200
+    dims:
+      h: 7
+      l: 18
+      w: 13
+  - name: 水果
+    shape: cyl
+    material: 食物
+    weight: 220
+    dims:
+      d: 8
+      h: 8
+  - name: 水壶
+    shape: cyl
+    material: 金属
+    weight: 500
+    dims:
+      d: 7
+      h: 22
+  notes: '背景摆放:花、水杯架
+
+    1.打开饭盒袋拉链(拉链顺畅阻力,感到滑到头的顿挫),袋口撑开立在面前(O/K/P/L格)
+
+    2.主食位:三明治盒扣紧盒盖(四角咔哒)放进袋底
+
+    2b.两只饭盒上下叠放装袋,重盒在下
+
+    3.水果位:苹果和香蕉用纸巾分别包好(包的时候感到纸巾裹紧)竖放进空隙
+
+    4.饮品位:水壶拧紧盖(手感变紧)斜插进侧袋,提一下确认卡住
+
+    5.拉回拉链(全程顺畅无卡壳),拎起饭盒袋晃两下听声:内部无碰撞滑动才算装好'
+- id: 98
+  name: 餐桌_茶则量茶入壶_两勺版
+  category: 茶席咖啡
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 干茶在茶则里的滑动沙感;磕壶口抖碎末;盖子对正压稳
+  difficulty: 简单
+  background: 花、水杯架
+  objects: *id004
+  notes: '背景摆放:花、水杯架
+
+    1.双手打开茶叶罐盖子,盖子仰面放在罐旁
+
+    2.用茶则伸进罐里舀起一勺茶叶,干茶在勺里会沙沙滑动,轻晃勺柄把茶叶拨平
+
+    2b.舀两勺,第二勺比第一勺浅一些
+
+    3.把茶则里的茶倒进茶壶壶口,倒完把茶则在壶口轻磕两下抖净碎末
+
+    4.盖回茶叶罐盖子(盖沿对正压稳),茶壶放回面前(O/K/P/L格)等待注水'
+- id: 99
+  name: 餐桌_碗碟预洗归集_加勺版
+  category: 补充场景
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 涮洗残渣感;叠放贴合;掂重预估水量
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 碗
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碗2
+    shape: cyl
+    material: 陶瓷
+    weight: 300
+    dims:
+      d: 13
+      h: 6
+  - name: 碟子
+    shape: cyl
+    material: 陶瓷
+    weight: 260
+    dims:
+      d: 18
+      h: 2
+  - name: 筷子
+    shape: cyl
+    material: 木头
+    weight: 14.4
+    dims:
+      d: 0.7
+      h: 25
+  - name: 勺子
+    shape: cyl
+    material: 金属
+    weight: 25
+    dims:
+      d: 1.5
+      h: 16
+  - name: 洗盆
+    shape: cyl
+    material: 塑料
+    weight: 350
+    dims:
+      d: 32
+      h: 13
+  - name: 水碗
+    shape: cyl
+    material: 陶瓷
+    weight: 350
+    dims:
+      d: 14
+      h: 7
+  notes: '背景摆放:花、水杯架
+
+    1.桌面用过的餐具逐件拿起,先在水碗水碗里涮一下(感到残渣被水带走)
+
+    2.碗碗相叠(叠放要领:贴合轻响、捧转对齐)码成一摞
+
+    3.碟子竖插进洗盆一侧的碟架槽,插到槽底
+
+    4.筷子并拢头尾对齐横放在洗盆另一侧
+
+    4b.勺子头朝下插进筷堆中间(勺柄露出便于拿取)
+
+    5.整盆端起掂重预估水量,平稳移到桌角待洗区,水面不荡出'
+- id: 100
+  name: 餐桌_颗粒大小分拣
+  category: 触觉辨识
+  modalities:
+  - 视觉
+  - 触觉
+  tactile: 指尖捻选颗粒大小;搅拌时的密度差异
+  difficulty: 中等
+  background: 花、水杯架
+  objects:
+  - name: 豆碗
+    shape: cyl
+    material: 陶瓷
+    weight: 400
+    dims:
+      d: 15
+      h: 7
+  - name: 黄豆
+    shape: cyl
+    material: 食物
+    weight: 3
+    dims:
+      d: 0.8
+      h: 0.6
+  - name: 花生
+    shape: cyl
+    material: 食物
+    weight: 2
+    dims:
+      d: 1.2
+      h: 0.9
+  - name: 小碟
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 9
+      h: 2.5
+  - name: 小碟2
+    shape: cyl
+    material: 陶瓷
+    weight: 120
+    dims:
+      d: 9
+      h: 2.5
+  notes: '背景摆放:花、水杯架
+
+    1.豆碗里混着黄豆和花生米,先把手伸进去轻轻搅两下,指尖感受两种颗粒的大小差异
+
+    2.闭眼抓一小把,靠指尖捻选把黄豆拨到小碟、花生米拨到小碟2(一粒一粒拨,凭大小不凭颜色)
+
+    3.分完睁眼核对:两碟颜色应截然分开,混了的挑回去
+
+    4.重复两轮,直到豆碗里的豆全部分完
+
+    5.两个小碟并排摆到面前(O/K/P/L格),豆碗复位'

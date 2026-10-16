@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"C:\\\\Projects\\\\Embodied-Brain-Collect\\\\data\\\\session\" | tail -15)",
+      "Bash(find \"C:\\\\Projects\\\\Embodied-Brain-Collect\\\\data\\\\session\\\\2026-10-14-13-54-33\" -maxdepth 2 -name \"*.log\" -o -maxdepth 2 -name \"*.txt\" | head; echo \"---ego_headband---\"; ls -la \"C:\\\\Projects\\\\Embodied-Brain-Collect\\\\data\\\\session\\\\2026-10-14-13-54-33\\\\ego_headband\")",
+      "Bash(echo \"TERM=$TERM\"; echo \"COLORTERM=$COLORTERM\"; echo \"WT_SESSION=$WT_SESSION\"; echo \"TERMINAL_EMULATOR=$TERMINAL_EMULATOR\")"
+    ]
+  }
+}

@@ -41,6 +41,10 @@ from embodied_brain_collect.recorders.ego_headband.microphone_writer import Micr
 
 _RATE = 16000
 _BLOCK = 320  # MicrophoneWriter 固定块长(采样)
+# 头环 USB 音频是 ASYNC 等时端点,约每 61 s 丢一个 period(~20 ms),硬件层不可
+# 恢复。stamp_ns 仍逐块真实,缺口只是内容缺失(见 pack_daily.load_microphone_index),
+# 所以这里与设备端 alsa_capture.MAX_GAP_NS 保持一致,不按 20 ms 等间隔要求。
+_MAX_BLOCK_DEVIATION_MS = 200
 
 
 def _config(tmp_path, **kw):
@@ -197,8 +201,9 @@ def _verify_raw_microphone(path):
                 problems.append("capture timestamps repeat or go backwards")
             residual = np.diff(stamp) - _BLOCK * (1_000_000_000 // _RATE)
             max_deviation_ms = float(np.abs(residual).max()) / 1e6
-            if max_deviation_ms > 10:
-                problems.append("per-block timestamp discontinuity exceeds 10 ms")
+            if max_deviation_ms > _MAX_BLOCK_DEVIATION_MS:
+                problems.append("per-block timestamp discontinuity exceeds "
+                                f"{_MAX_BLOCK_DEVIATION_MS} ms")
             report.update(blocks=n, pcm_samples=int(pcm.size), duration_s=pcm.size / _RATE,
                           first_stamp_ns=int(stamp[0]),
                           max_block_timing_deviation_ms=max_deviation_ms)
@@ -281,7 +286,9 @@ def _verify_wav_microphone(out):
                     "clock mapping uncertainty exceeds 0.5 ms")
             residual = np.diff(stamp) - samples[:-1] * (1_000_000_000 // _RATE)
             max_deviation_ms = float(np.abs(residual).max()) / 1e6
-            require(max_deviation_ms <= 10, "per-block timestamp discontinuity exceeds 10 ms")
+            require(max_deviation_ms <= _MAX_BLOCK_DEVIATION_MS,
+                    "per-block timestamp discontinuity exceeds "
+                    f"{_MAX_BLOCK_DEVIATION_MS} ms")
             report.update(blocks=int(n), wav_samples=frames, duration_s=frames / rate,
                           first_stamp_ns=int(stamp[0]), first_device_sample_index=int(index[0]),
                           first_wav_sample_offset=int(offset[0]),

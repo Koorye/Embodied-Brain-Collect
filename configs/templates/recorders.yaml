@@ -28,14 +28,14 @@ recorders:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: opencv_camera
     name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    idx: 3            # 左腕相机，USB 集线器左起第二口
+    idx: 2              # 左腕相机，USB 集线器左起第二口
     hz: 30
 
   cam_right_wrist:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: opencv_camera
     name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    idx: 2            # 右腕相机
+    idx: 3            # 右腕相机
     hz: 30
 
   cam_third:
