@@ -1,4 +1,4 @@
-"""EGO headband — wired TCP receiver (4 fisheye JPEG cameras + 2 IMUs).
+"""EGO headband — wired TCP receiver (HAL H.264 or legacy ROS JPEG).
 
 Speaks the device's "wired ROS TCP" protocol (reference client:
 ``C:\\Users\\31454\\wired_tcp``).  Every record on the wire is::
@@ -44,6 +44,7 @@ and both IMUs survive the wait and record once the session actually starts.
 """
 
 import ctypes
+from .h264_decoder import H264Decoder
 import json
 from pathlib import Path
 import queue
@@ -141,6 +142,8 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._decode_threads = {}
         self._decode_stop = threading.Event()
         self._cam_decode_dropped = {}
+        self._h264_cameras = set()
+        self._h264_decoders = {}
 
     def __setstate__(self, state: dict) -> None:
         super().__setstate__(state)
@@ -162,6 +165,8 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self.__dict__.setdefault("_decode_threads", {})
         self.__dict__.setdefault("_decode_stop", threading.Event())
         self.__dict__.setdefault("_cam_decode_dropped", {})
+        self.__dict__.setdefault("_h264_cameras", set())
+        self.__dict__.setdefault("_h264_decoders", {})
 
     # ---- lifecycle ------------------------------------------------------
 
@@ -229,6 +234,8 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
             self._close()
             raise
         super()._record()
+        if self._h264_cameras and self._ended:
+            raise RuntimeError(self._ended_reason)
 
     def _close(self) -> None:
         self._stop_drain()
@@ -292,7 +299,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 self._drain_discard()
 
     def _drain_discard(self) -> None:
-        """Drop queued pre-roll frames; only ``time_probe`` is acted on."""
+        """Discard pre-roll output while preserving the H.264 decoder state."""
         while True:
             try:
                 frame = self._take_frame()
@@ -302,10 +309,21 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 return
             if frame is None:
                 return
-            meta, _ = frame
+            meta, payload = frame
             kind = meta.get("kind")
             if kind == "data":
                 self._preroll += 1
+                # H.264 P frames depend on the IDR received during open.
+                # Keep decoder state alive, but never save pre-roll.
+                if self._cam_index.get(meta.get("topic")) in self._h264_cameras:
+                    try:
+                        self._on_h264_data(meta, payload, record=False)
+                    except Exception as exc:
+                        self._end_stream(f"H.264 pre-roll failed: {exc}")
+                        return
+            elif kind == "error":
+                self._end_stream(f"server error: {meta.get('message')}")
+                return
             elif kind == "time_probe":
                 try:
                     self._send({"kind": "time_reply", "id": meta.get("id"),
@@ -393,6 +411,8 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
 
     def _on_stream_start(self, meta: dict) -> None:
         self._topics = dict(meta.get("topics") or {})
+        self._static["stream_source"] = np.asarray(meta.get("source", "ros"))
+        self._static["stream_topics_json"] = np.asarray(json.dumps(self._topics))
         self._audio_available = (self.config.audio_enabled and
                                  self._topics.get(self.config.audio_topic) == "audio/PCM")
         missing = meta.get("missing_publishers") or []
@@ -401,6 +421,12 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         for topic in self._topics:
             if topic in cam_topics:
                 i = cam_topics.index(topic)
+                kind = self._topics[topic]
+                if kind == "h264/annexb":
+                    H264Decoder.check_available()
+                    self._h264_cameras.add(i)
+                elif kind != "sensor_msgs/CompressedImage":
+                    raise ValueError(f"unsupported camera type: {kind}")
                 self._cam_index[topic] = i
                 self._cam_count.setdefault(i, 0)
             elif topic in imu_topics:
@@ -556,6 +582,12 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         # back to arrival time if a stamp is missing.
         t = (float(stamp_ns) / 1e9) if stamp_ns else time.time()
 
+        if self._cam_index.get(topic) in self._h264_cameras:
+            try:
+                self._on_h264_data(meta, payload, record=(not self._launch_mode or self._committed))
+            except Exception as exc:
+                self._end_stream(f"H.264 receive failed: {exc}")
+            return
         if topic in self._cam_index:
             self._queue_camera(self._cam_index[topic], payload, t)
         elif topic in self._imu_index:
@@ -579,6 +611,119 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
             if prev is not None and seq != prev + 1:
                 self._gaps[topic] = self._gaps.get(topic, 0) + abs(seq - prev - 1)
             self._last_seq[topic] = seq
+
+    def _on_h264_data(self, meta, payload, *, record):
+        topic = meta["topic"]
+        i = self._cam_index[topic]
+        if meta.get("type") != "h264/annexb":
+            raise ValueError("camera type changed during H.264 stream")
+        stamp = (meta.get("header") or {}).get("stamp_ns")
+        if type(stamp) is not int or stamp <= 0:
+            raise ValueError("H.264 requires a positive capture timestamp")
+        seq = meta.get("stream_seq")
+        if type(seq) is not int or seq < 0:
+            raise ValueError("H.264 requires stream_seq")
+        prev = self._last_seq.get(topic)
+        if prev is not None and seq != prev + 1:
+            raise ValueError(f"H.264 sequence discontinuity: {prev} -> {seq}")
+        if prev is None and meta.get("keyframe") is not True:
+            raise ValueError("first H.264 frame must be an IDR")
+        self._last_seq[topic] = seq
+        self._queue_h264(i, payload, stamp / 1e9, record, meta.get("keyframe"))
+
+    def _queue_h264(self, i, payload, stamp, record, keyframe):
+        if i not in self._decode_queues:
+            q = queue.Queue(maxsize=_DECODE_QUEUE_MAX)
+            self._decode_queues[i] = q
+            worker = threading.Thread(target=self._decode_h264_loop, args=(i, q),
+                                      name=f"headband-cam{i}-h264", daemon=True)
+            self._decode_threads[i] = worker
+            worker.start()
+        # Never drop compressed reference frames: losing one corrupts the GOP.
+        try:
+            self._decode_queues[i].put_nowait((payload, stamp, record, keyframe))
+        except queue.Full as exc:
+            raise RuntimeError("H.264 decoder queue overflow; stopping without replacing frames") from exc
+
+    def _decode_h264_loop(self, i, q):
+        try:
+            decoder = H264Decoder()
+        except Exception as exc:
+            self._end_stream(f"H.264 decoder unavailable: {exc}")
+            return
+        self._h264_decoders[i] = decoder
+        while True:
+            try:
+                payload, stamp, record, keyframe = q.get(timeout=0.1)
+            except queue.Empty:
+                if self._decode_stop.is_set():
+                    return
+                continue
+            try:
+                rgb = decoder.decode(payload, keyframe)
+                self._enqueue_h264_rgb(self._cam_stem(i), stamp, rgb, record)
+                self._cam_count[i] = self._cam_count.get(i, 0) + 1
+            except Exception as exc:
+                self._end_stream(f"H.264 cam{i} decode/write failed: {exc}")
+                return
+
+    def _enqueue_h264_rgb(self, key, stamp, rgb, record):
+        if not self._save_enabled:
+            return
+        if self._write_failed:
+            raise RuntimeError("H.264 video writer failed")
+        self._start_write_worker(key, warm_data=rgb)
+        # The flag belongs to the packet's receive phase, not the worker's
+        # later execution time. A queued warm-up P frame must not leak into MP4.
+        if not record:
+            self._frames_precommit += 1
+            return
+        try:
+            self._write_queues[key].put((stamp, rgb), timeout=1.0)
+        except queue.Full as exc:
+            raise RuntimeError("H.264 video writer queue overflow") from exc
+        self._frames_enqueued += 1
+
+    def _write_queue_size(self):
+        # Decoded HAL frames are ~7 MB each, unlike compressed JPEGs.
+        return 8 if self._h264_cameras else super()._write_queue_size()
+
+    def _ready_to_commit(self):
+        if self._ended:
+            raise RuntimeError(self._ended_reason)
+        return (all(self._cam_stem(i) in self._video_writers for i in self._h264_cameras)
+                and super()._ready_to_commit())
+
+    def _stop_write_worker(self):
+        # HAL must flush every accepted frame, including a full queue at stop.
+        # Remove its workers before the legacy JPEG shutdown can drop a tail.
+        errors = []
+        for i in self._h264_cameras:
+            key = self._cam_stem(i)
+            q = self._write_queues.get(key)
+            worker = self._write_threads.get(key)
+            if worker is not None:
+                try:
+                    q.put(None, timeout=30)
+                    worker.join(timeout=30)
+                    if worker.is_alive():
+                        raise RuntimeError(f"{key}: video writer did not drain")
+                except (queue.Full, RuntimeError) as exc:
+                    errors.append(str(exc))
+                    continue
+                self._write_queues.pop(key, None)
+                self._write_threads.pop(key, None)
+                writer = self._video_writers.pop(key, None)
+                if writer is not None:
+                    try:
+                        writer.close()
+                    except Exception as exc:
+                        errors.append(f"{key}: finalize failed: {exc}")
+        if errors:
+            self._end_stream("; ".join(errors))
+            self._static["h264_recording_error"] = np.asarray("; ".join(errors))
+            raise RuntimeError("; ".join(errors))
+        super()._stop_write_worker()
 
     def _queue_camera(self, i: int, payload: bytes, t: float) -> None:
         # Buffer each camera's compressed JPEG on its own queue + thread, so
@@ -659,6 +804,8 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
             return
         self._ended = True
         self._ended_reason = reason
+        if self._h264_cameras:
+            self._static["h264_recording_error"] = np.asarray(reason)
         self._log(f"[ego_headband:net] stream ended — {reason}; stopping and "
                   f"saving what was received", level="WARNING")
         self.stop_event.set()          # _loop breaks -> _teardown saves

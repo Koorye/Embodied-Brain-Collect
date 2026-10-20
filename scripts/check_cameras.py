@@ -190,7 +190,7 @@ class _HeadbandFeed:
     直接从 recorder 模块导入,协议变了这边跟着变):hello → 回 time_probe
     → 接收并校验三个标定文件 → calibration_ack → stream_start 后,
     常驻一个读线程排空 socket,每路相机只保留最新一帧
-    的 JPEG 解码结果 —— 拼屏循环按需来取,不落盘、不转码。
+    的解码结果 —— JPEG 可跳过旧帧,H.264 必须连续解码后再取最新帧。
     """
 
     def __init__(self, host: str, port: int, camera_topics, connect_timeout: float):
@@ -305,7 +305,10 @@ class _HeadbandFeed:
         import cv2
         import numpy as np
         net = self._net
-        pending: dict = {}                 # topic -> 最新 jpeg,新的覆盖旧的
+        pending: dict = {}                 # JPEG only: latest independent frame
+        from embodied_brain_collect.recorders.ego_headband.h264_decoder import H264Decoder
+        decoders = {}
+        last_seq = {}
         while not self._stop.is_set():
             got = self._recv(0.2)
             if got is None:
@@ -339,7 +342,22 @@ class _HeadbandFeed:
                 elif kind == "data":
                     topic = meta.get("topic")
                     if topic in self.camera_topics and payload:
-                        pending[topic] = payload
+                        if self.advertised.get(topic) == "h264/annexb":
+                            if meta.get("type") != "h264/annexb":
+                                raise ValueError("headband camera type changed")
+                            seq = meta.get("stream_seq")
+                            if type(seq) is not int or seq < 0:
+                                raise ValueError("missing H.264 stream_seq")
+                            if topic in last_seq and seq != last_seq[topic] + 1:
+                                raise ValueError("H.264 preview sequence discontinuity")
+                            last_seq[topic] = seq
+                            if topic not in decoders:
+                                decoders[topic] = H264Decoder()
+                            rgb = decoders[topic].decode(payload, meta.get("keyframe"))
+                            with self._lock:
+                                self._latest[topic] = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                        else:
+                            pending[topic] = payload
             # 解码放在排空之后:1080p JPEG 逐帧解(~15ms/帧)追不上
             # 4x30fps 的入流,只解每路最新一帧才是能跟上的节奏
             for topic, payload in pending.items():
