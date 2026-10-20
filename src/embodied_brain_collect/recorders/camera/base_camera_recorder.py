@@ -247,10 +247,16 @@ class BaseCameraRecorder(BaseRecorder):
         self._preview_last[key] = now
         return True
 
+    #: UDP 单包上限(IPv4 datagram 载荷 65507)。超限的 sendto 会直接报错,
+    #: 预览就永远停在"等待预览" —— 宁可丢这一帧也不能静默失效。
+    _PREVIEW_MAX_DATAGRAM = 65000
+
     def _preview_send(self, key: str, jpeg: bytes) -> None:
         """把一帧 JPEG 推给该流配置的端口;任何失败都静默(预览非录制)。"""
         port = self._preview_ports().get(key, 0)
         if port <= 0 or not jpeg:
+            return
+        if len(jpeg) > self._PREVIEW_MAX_DATAGRAM:
             return
         try:
             if self._preview_sock is None:
@@ -262,31 +268,63 @@ class BaseCameraRecorder(BaseRecorder):
 
     def preview_raw(self, key: str, now: float, frame_bgr) -> None:
         """原始帧入口:降采样 + JPEG 编码后推送(限流后才编码)。"""
+        self._preview_encode(key, now, frame_bgr, rgb=False)
+
+    def preview_rgb(self, key: str, now: float, frame_rgb) -> None:
+        """RGB 帧入口(头环 H.264 解码输出是 rgb24):同 :meth:`preview_raw`,
+        只是编码前补一次 RGB→BGR —— 控制台按 BGR 解 JPEG,不转红蓝互换。"""
+        self._preview_encode(key, now, frame_rgb, rgb=True)
+
+    def _preview_encode(self, key: str, now: float, frame, *,
+                        rgb: bool, throttled: bool = False) -> None:
+        """降采样 + JPEG 编码后推送。``throttled`` = 调用方已过限流闸门
+        (:meth:`_preview_due` 会记时,再问一次必然为假、白丢这一帧)。"""
         if self._preview_ports().get(key, 0) <= 0:
             return
-        if not self._preview_due(key, now):
+        if not throttled and not self._preview_due(key, now):
             return
         try:
             import cv2
-            h, w = frame_bgr.shape[:2]
+            h, w = frame.shape[:2]
             pw = min(int(getattr(self.config, "preview_width", 640)), w)
             ph = max(1, round(h * pw / w))
-            small = cv2.resize(frame_bgr, (pw, ph)) if pw != w else frame_bgr
-            ok, enc = cv2.imencode(".jpg", small,
-                                   [cv2.IMWRITE_JPEG_QUALITY, 70])
-            if ok:
-                self._preview_send(key, enc.tobytes())
+            small = cv2.resize(frame, (pw, ph)) if pw != w else frame
+            if rgb:
+                small = cv2.cvtColor(small, cv2.COLOR_RGB2BGR)
+            # 640 宽 + q70 通常是 30-60KB,但高细节画面(鱼眼全景、噪点)
+            # 能到 120KB —— 一个 UDP 包装不下就整帧消失。降质量重编码直到
+            # 塞得进去:预览画质可以让,预览出不出画面不能让。
+            for quality in (70, 50, 30):
+                ok, enc = cv2.imencode(".jpg", small,
+                                       [cv2.IMWRITE_JPEG_QUALITY, quality])
+                if not ok:
+                    return
+                if len(enc) <= self._PREVIEW_MAX_DATAGRAM:
+                    self._preview_send(key, enc.tobytes())
+                    return
         except Exception:
             pass
 
     def preview_jpeg(self, key: str, now: float, jpeg: bytes) -> None:
-        """已压缩帧入口(头环鱼眼):直接转发,不解码不重编码 —— 控制台
-        自己按面板尺寸缩放。限流同 :meth:`preview_raw`。"""
+        """已压缩帧入口(头环鱼眼 MJPEG):能塞进一个 UDP 包就直接转发,
+        不解码不重编码;装不下才解码降采样重编码 —— 1920x1088 的鱼眼帧
+        有 200-400KB,远超单包上限,不降采样等于预览永远不出画面。
+        限流同 :meth:`preview_raw`。"""
         if self._preview_ports().get(key, 0) <= 0:
             return
         if not self._preview_due(key, now):
             return
-        self._preview_send(key, jpeg)
+        if len(jpeg) <= self._PREVIEW_MAX_DATAGRAM:
+            self._preview_send(key, jpeg)
+            return
+        try:
+            import cv2
+            arr = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8),
+                               cv2.IMREAD_COLOR)
+        except Exception:
+            return
+        if arr is not None:
+            self._preview_encode(key, now, arr, rgb=False, throttled=True)
 
     def _close_preview(self) -> None:
         if self._preview_sock is not None:

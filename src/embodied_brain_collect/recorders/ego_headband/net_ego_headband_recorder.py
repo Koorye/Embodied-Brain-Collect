@@ -662,6 +662,9 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 continue
             try:
                 rgb = decoder.decode(payload, keyframe)
+                # 辅助员控制台预览:解出来就推,与 record 无关 —— 预热/等待
+                # 开录期间辅助员同样需要看画面。失败从不影响录制。
+                self.preview_rgb(self._cam_stem(i), stamp, rgb)
                 self._enqueue_h264_rgb(self._cam_stem(i), stamp, rgb, record)
                 self._cam_count[i] = self._cam_count.get(i, 0) + 1
             except Exception as exc:
