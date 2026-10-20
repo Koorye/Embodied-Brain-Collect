@@ -1,6 +1,5 @@
 """OpenCV USB camera."""
 
-import socket
 import sys
 import time
 from .base_camera_recorder import BaseCameraRecorder
@@ -52,14 +51,6 @@ class OpencvCameraRecorder(BaseCameraRecorder):
                   f"(role={self.role or '-'})" + (" (DOWNGRADED!)" if dg else ""))
 
         self._cap = cap
-        # 辅助员控制台的 UDP JPEG 预览流(preview_port > 0 时开启)
-        self._preview_sock = None
-        self._preview_dest = None
-        self._preview_last = 0.0
-        if cfg.preview_port > 0:
-            self._preview_sock = socket.socket(socket.AF_INET,
-                                               socket.SOCK_DGRAM)
-            self._preview_dest = ("127.0.0.1", cfg.preview_port)
         # 不读首帧:能否出流由 launcher 的确认阶段判断,自动曝光的
         # 预热帧由 commit 丢弃
         return True
@@ -75,37 +66,14 @@ class OpencvCameraRecorder(BaseCameraRecorder):
                 "— 设备可能已掉线")
         # Absolute host wall-clock at frame grab (unix seconds).
         now = time.time()
-        self._send_preview(frame, now)
+        # 辅助员控制台预览(preview_port > 0 时);降采样+JPEG 在基类里做
+        self.preview_raw("frames", now, frame)
         # VideoCapture delivers BGR; record RGB like the other cameras.
         self.arr_video("frames", now,
                        self._cv2.cvtColor(frame, self._cv2.COLOR_BGR2RGB))
-
-    def _send_preview(self, frame_bgr, now: float) -> None:
-        """降采样 JPEG 经 UDP 推给辅助员控制台;失败不影响录制。"""
-        cfg = self.config
-        if self._preview_sock is None:
-            return
-        if now - self._preview_last < 1.0 / max(cfg.preview_hz, 0.1):
-            return
-        self._preview_last = now
-        try:
-            h, w = frame_bgr.shape[:2]
-            pw = min(cfg.preview_width, w)
-            ph = max(1, round(h * pw / w))
-            small = (self._cv2.resize(frame_bgr, (pw, ph))
-                     if pw != w else frame_bgr)
-            ok, enc = self._cv2.imencode(
-                ".jpg", small, [self._cv2.IMWRITE_JPEG_QUALITY, 70])
-            if ok:
-                self._preview_sock.sendto(
-                    enc.tobytes(), self._preview_dest)
-        except OSError:
-            pass                    # 单包超限/瞬断:预览丢帧无碍录制
 
     def _close(self) -> None:
         if self._cap is not None:
             self._cap.release()
             self._cap = None
-        if self._preview_sock is not None:
-            self._preview_sock.close()
-            self._preview_sock = None
+        self._close_preview()

@@ -40,6 +40,12 @@ class BaseEgoHeadbandRecorder(BaseCameraRecorder):
         names = getattr(self.config, "camera_names", ()) or ()
         return str(names[i]) if i < len(names) else f"cam{i}"
 
+    def _preview_ports(self) -> dict:
+        """四路鱼眼各自的预览端口 —— 配置 ``preview_ports``
+        ({相机名: 端口})决定推哪几路,其余不推。与单口相机的
+        ``preview_port`` 并行存在,本设备只认按名字给的这张表。"""
+        return dict(getattr(self.config, "preview_ports", None) or {})
+
     def _write_microphone(self, meta: dict, payload: bytes) -> None:
         # 两段式启动:commit 前的预热音频不落盘。wav 是流式直写磁盘的,
         # 预热段一旦写入便无法像视频缓冲那样在 commit 时丢弃 —— 不拦的话

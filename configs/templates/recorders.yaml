@@ -17,6 +17,13 @@ recorders:
     port: 5577                    # 设备推流端口
     connect_timeout: 10           # TCP 连接超时(s)
     encoder: auto                 # auto=GPU(hevc_nvenc)优先,不可用自动回退 CPU(libx265)
+    # 辅助员控制台预览:{相机名: UDP 端口},相机名取 camera_names
+    # (left/right/bleft/bright)。只配想看的那几路,未列出的不推;端口与
+    # configs/assist_console.yaml 的 cameras 段一一对应。鱼眼帧本身是
+    # JPEG —— 预览直接转发,不解码不重编码,几乎不增加负载。{} = 全不推。
+    preview_ports: {}
+    # preview_ports: {"left": 9990, "right": 9991, "bleft": 9992, "bright": 9993}
+    preview_hz: 15                # 每路预览帧率上限(多路同看时建议 10-15)
     audio_enabled: true           # true = 连设备的麦克风话题,PCM 落 wav(需设备端支持)
     open_timeout: 60              # open 阶段要走完时钟同步握手,给足余量
     hz: 201                       # 轮询上限;每 poll 会排空接收缓冲
@@ -30,6 +37,7 @@ recorders:
     name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
     idx: 2              # 左腕相机，USB 集线器左起第二口
     hz: 30
+    # preview_port: 9994  # 想在辅助员控制台看这一路就打开(0/缺省=不推)
 
   cam_right_wrist:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
@@ -37,6 +45,7 @@ recorders:
     name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
     idx: 3            # 右腕相机
     hz: 30
+    # preview_port: 9995  # 想在辅助员控制台看这一路就打开(0/缺省=不推)
 
   cam_third:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)

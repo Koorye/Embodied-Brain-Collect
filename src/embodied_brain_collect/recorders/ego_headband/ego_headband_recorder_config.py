@@ -55,6 +55,13 @@ class EgoHeadbandRecorderConfig(BaseRecorderConfig):
     camera_names: tuple = DEFAULT_CAMERA_NAMES   # output stem per slot (mp4/npz)
     imu_topics: tuple = DEFAULT_IMU_TOPICS
 
+    # ---- 辅助员控制台预览(按相机名给端口,任意一路或多路都可配) ----
+    # {相机名: UDP 端口},相机名取 camera_names(left/right/bleft/bright)。
+    # 只配想看的那几路即可,未列出的不推;端口与 assist_console.yaml 的
+    # cameras 段一致。鱼眼帧本身就是 JPEG —— 预览直接转发,不解码不重编码。
+    preview_ports: dict | None = None
+    preview_hz: float = 30.0     # 每路预览帧率上限(采集帧率之上无意义)
+
     # ---- camera video encoding ({name}.mp4, like the other cameras) ----
     crf: int = 23
     preset: str = "medium"
@@ -84,3 +91,17 @@ class EgoHeadbandRecorderConfig(BaseRecorderConfig):
             v = getattr(self, f)
             if v is not None and not isinstance(v, tuple):
                 setattr(self, f, tuple(v))
+        # preview_ports: {相机名: 端口};yaml 里端口可能写成字符串,键名
+        # 容错去空格。非法项直接丢弃 —— 预览配错绝不能影响录制。
+        if self.preview_ports:
+            clean: dict = {}
+            for name, port in dict(self.preview_ports).items():
+                try:
+                    p = int(port)
+                except (TypeError, ValueError):
+                    continue
+                if p > 0:
+                    clean[str(name).strip()] = p
+            self.preview_ports = clean
+        else:
+            self.preview_ports = {}

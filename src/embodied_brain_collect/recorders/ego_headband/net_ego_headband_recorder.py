@@ -234,6 +234,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._stop_drain()
         self._close_sock()
         self._stop_camera_decoders()
+        self._close_preview()
         self._close_microphone()
         if self.config.audio_enabled and self._audio_available and self._audio_writer is None:
             self._audio_error = self._audio_error or "microphone advertised but no audio recorded"
@@ -631,6 +632,9 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         if not payload:
             self._cam_empty[i] = self._cam_empty.get(i, 0) + 1
             return
+        # 辅助员控制台预览:在本相机自己的解码线程里转发(socket 循环不受
+        # 影响),帧已是 JPEG —— 直接发,不解码不重编码;失败从不影响录制。
+        self.preview_jpeg(self._cam_stem(i), t, payload)
         # JPEG passthrough: hand the compressed frame straight to the async
         # writer, which lets ffmpeg decode (mjpeg_cuvid / GPU) + re-encode
         # (hevc_nvenc) it — NO cv2.imdecode on the CPU.  Four 1920x1088@30

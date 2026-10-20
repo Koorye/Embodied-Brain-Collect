@@ -22,6 +22,7 @@ timestamps even though the mp4 survives.
 """
 
 import queue
+import socket
 import threading
 from pathlib import Path
 
@@ -41,6 +42,11 @@ class BaseCameraRecorder(BaseRecorder):
     def __init__(self, config):
         super().__init__(config)
         self._write_failed: set[str] = set()      # keys with OSError so far
+        # 辅助员控制台预览:每个流一个 UDP 目标端口(_preview_ports),失败
+        # 从不影响录制。socket 不可 pickle —— spawn 时由 __getstate__ 剔除,
+        # 子进程里按需惰性重建。
+        self._preview_sock = None
+        self._preview_last: dict[str, float] = {}
         # Async write pipeline: per-stream bounded queue + writer thread,
         # so a slow stream (16-bit depth) never stalls another (color).
         self._write_queues: dict[str, queue.Queue] = {}
@@ -217,6 +223,84 @@ class BaseCameraRecorder(BaseRecorder):
                 pass
             q.put_nowait((ts, data))
             self._dropped[key] = self._dropped.get(key, 0) + 1
+
+    # ---- assist-console preview (UDP JPEG, best effort) --------------------
+
+    def _preview_ports(self) -> dict[str, int]:
+        """``{流名: UDP 端口}`` —— 要推预览的流。默认取单口配置
+        ``preview_port``(映射到本 recorder 的首个流名,见
+        :attr:`preview_stream`);多流设备(头环四路鱼眼)覆盖本方法按
+        流名分别给端口。0/缺省 = 该流不推。"""
+        port = int(getattr(self.config, "preview_port", 0) or 0)
+        if port <= 0:
+            return {}
+        return {self.preview_stream: port}
+
+    #: 单流相机的流名(与 ``arr_video`` 的 key 一致)
+    preview_stream = "frames"
+
+    def _preview_due(self, key: str, now: float) -> bool:
+        """按 ``preview_hz`` 限流 —— 预览帧率在采集帧率之上没有意义。"""
+        hz = float(getattr(self.config, "preview_hz", 30.0) or 30.0)
+        if now - self._preview_last.get(key, 0.0) < 1.0 / max(hz, 0.1):
+            return False
+        self._preview_last[key] = now
+        return True
+
+    def _preview_send(self, key: str, jpeg: bytes) -> None:
+        """把一帧 JPEG 推给该流配置的端口;任何失败都静默(预览非录制)。"""
+        port = self._preview_ports().get(key, 0)
+        if port <= 0 or not jpeg:
+            return
+        try:
+            if self._preview_sock is None:
+                self._preview_sock = socket.socket(socket.AF_INET,
+                                                   socket.SOCK_DGRAM)
+            self._preview_sock.sendto(jpeg, ("127.0.0.1", port))
+        except OSError:
+            pass          # 单包超限/瞬断:预览丢帧无碍录制
+
+    def preview_raw(self, key: str, now: float, frame_bgr) -> None:
+        """原始帧入口:降采样 + JPEG 编码后推送(限流后才编码)。"""
+        if self._preview_ports().get(key, 0) <= 0:
+            return
+        if not self._preview_due(key, now):
+            return
+        try:
+            import cv2
+            h, w = frame_bgr.shape[:2]
+            pw = min(int(getattr(self.config, "preview_width", 640)), w)
+            ph = max(1, round(h * pw / w))
+            small = cv2.resize(frame_bgr, (pw, ph)) if pw != w else frame_bgr
+            ok, enc = cv2.imencode(".jpg", small,
+                                   [cv2.IMWRITE_JPEG_QUALITY, 70])
+            if ok:
+                self._preview_send(key, enc.tobytes())
+        except Exception:
+            pass
+
+    def preview_jpeg(self, key: str, now: float, jpeg: bytes) -> None:
+        """已压缩帧入口(头环鱼眼):直接转发,不解码不重编码 —— 控制台
+        自己按面板尺寸缩放。限流同 :meth:`preview_raw`。"""
+        if self._preview_ports().get(key, 0) <= 0:
+            return
+        if not self._preview_due(key, now):
+            return
+        self._preview_send(key, jpeg)
+
+    def _close_preview(self) -> None:
+        if self._preview_sock is not None:
+            try:
+                self._preview_sock.close()
+            except OSError:
+                pass
+            self._preview_sock = None
+
+    def __getstate__(self) -> dict:
+        # socket 不可 pickle(spawn 下父进程会把 recorder 整体传给子进程)
+        state = super().__getstate__()
+        state["_preview_sock"] = None
+        return state
 
     def arr_video(self, key: str, ts: float, arr: np.ndarray) -> None:
         """Feed one decoded frame (HxWx3 RGB or HxW depth) into the stream's

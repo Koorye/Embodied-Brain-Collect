@@ -79,9 +79,12 @@ class DummyEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         if self._poll_i % cam_every == 0:
             hue_step = 1.0 / max(cfg.n_cameras, 1)
             for i in range(cfg.n_cameras):
-                self.arr_video(self._cam_stem(i), ts,
-                               _bar(self._cam_t, cfg.cam_width, cfg.cam_height,
-                                    hue0=i * hue_step))
+                frame = _bar(self._cam_t, cfg.cam_width, cfg.cam_height,
+                             hue0=i * hue_step)
+                # 合成帧是原始 RGB:走 preview_raw(降采样 + JPEG 编码),
+                # 这样无硬件也能完整自测控制台的多路布局
+                self.preview_raw(self._cam_stem(i), ts, frame)
+                self.arr_video(self._cam_stem(i), ts, frame)
             self._cam_t += 1.0 / max(cfg.cam_fps, 1.0)
 
         if cfg.audio_enabled:

@@ -1,12 +1,43 @@
 # 辅助员控制台配置 —— 独立程序,不参与主采集逻辑,随时开关均不影响录制。
 # 启动:python scripts/assist_console.py
 #
-# 画面布局:左 = stim 屏幕实时镜像(截屏),右 = third camera 实时画面。
-# 辅助员看本屏判断采集阶段与采集员动作,直接按键盘空格切换阶段
-# (空格作用于持有焦点的刺激窗口)。
+# 画面布局:左 = stim 屏幕实时镜像(截屏),右 = 相机区(一路占满,多路
+# 自动排成接近正方的网格)。辅助员看本屏判断采集阶段与采集员动作,直接按
+# 键盘空格切换阶段(空格作用于持有焦点的刺激窗口)。
 display: 0          # 控制台全屏显示的屏幕(辅助员大屏)
 stim_display: 1     # 被镜像的刺激屏(采集员小屏)
 mirror: true        # 是否显示刺激屏截屏镜像
-camera: true        # 是否显示 third camera 预览
-camera_port: 9996   # 相机 JPEG 预览流端口(与 recorders.yaml 一致)
+camera: true        # 是否显示相机预览(false = 整个相机区关闭)
 fps: 30             # 控制台刷新率
+
+# 面板排布:vertical = 上下(stim 上 / 相机下,竖屏用这个)
+#          horizontal = 左右(stim 左 / 相机右)
+#          auto = 按屏幕宽高比自动选(高>宽 → 上下)
+layout: vertical
+split: 0.5          # stim 区占比(竖屏=高度占比),其余给相机区;0.2-0.8
+
+# 要显示的相机:逐条写 title(面板标题)+ port(预览端口),书写顺序 =
+# 面板顺序。端口必须与 recorders.yaml 里对应 recorder 的预览端口一致:
+#   * 普通相机(cam_third / cam_*_wrist):槽位的 preview_port
+#   * 头环四路鱼眼(left/right/bleft/bright):ego_headband 的 preview_ports
+# 想看哪几路就留哪几条 —— 任意一路或多路都可以同屏。
+cameras:
+  - title: "third camera(采集员)"
+    port: 9996
+  # 头环鱼眼示例:想看就取消注释(端口与 recorders.yaml preview_ports 对齐)
+  # - title: "头环 左目"
+  #   port: 9990
+  # - title: "头环 右目"
+  #   port: 9991
+  # - title: "头环 左后"
+  #   port: 9992
+  # - title: "头环 右后"
+  #   port: 9993
+  # 腕部相机示例(需在 recorders.yaml 给对应槽位配 preview_port)
+  # - title: "左腕"
+  #   port: 9994
+  # - title: "右腕"
+  #   port: 9995
+
+# 兼容旧配置:没有上面 cameras 段时,仍读单口 camera_port
+# camera_port: 9996
