@@ -27,7 +27,7 @@ recorders:
     audio_enabled: true           # true = 连设备的麦克风话题,PCM 落 wav(需设备端支持)
     open_timeout: 60              # open 阶段要走完时钟同步握手,给足余量
     hz: 201                       # 轮询上限;每 poll 会排空接收缓冲
-    link_timeout: 0.1             # 链路静默判死:连续这么久一个字节都没收到 →
+    link_timeout: 0.0             # 链路静默判死:连续这么久一个字节都没收到 →
                                   # 连接已死(断电/断网不发 FIN 的半开 TCP 上 recv
                                   # 只会一直超时,没有显式错误)。0 = 关闭
 
@@ -35,7 +35,7 @@ recorders:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: opencv_camera
     name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    idx: 2              # 左腕相机，USB 集线器左起第二口
+    idx: 0              # 左腕相机，USB 集线器左起第二口
     hz: 30
     # preview_port: 9994  # 想在辅助员控制台看这一路就打开(0/缺省=不推)
 
@@ -43,7 +43,7 @@ recorders:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: opencv_camera
     name: "JIERUIWEITONG FH868"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    idx: 3            # 右腕相机
+    idx: 1            # 右腕相机
     hz: 30
     # preview_port: 9995  # 想在辅助员控制台看这一路就打开(0/缺省=不推)
 
@@ -51,7 +51,7 @@ recorders:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: opencv_camera
     name: "Intel RealSense D455f"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    idx: 1
+    idx: 2
     hz: 30
     preview_port: 9996  # 辅助员控制台的 JPEG 预览流(session/assist_console);0=关闭
 
@@ -66,14 +66,12 @@ recorders:
     # 检测并做通过率检查,不达标拒开。时序红线(实测违反会 Device Error,
     # 只能重启 Curry/放大器):阻抗结束后放大器 ~10s 才恢复读数,恢复前
     # recorder 绝不断开连接(失败路径也先等恢复);也不发 AmpConnect。
-    open_timeout: 60   # 开录含阻抗检测(取数 + 等恢复读数,最长 ~52s),
-                        # 默认 30s 不够
+    open_timeout: 30   # 开录含阻抗检测(取数 + 等恢复读数,最长 ~52s),
     # BrainCo BCIGo 32 通道帽备选(软件同步,无硬件 TTL):把上面 kind 换成
     # brainco_eeg 即可。开录阻抗门禁同样是**自动**的:经 SDK leadoff 检测
     # 触发一次阻抗(4 chip x 8 通道轮询取均值做通过率检查),不达标拒开,
     # 阈值/豁免通道与 Curry 相互独立;host/port/sample_rate 等按需覆盖:
     # kind: brainco_eeg
-    # sample_rate: 500
     # name: "BrainCo BCIGo"
     # host: ""              # 空 = mDNS 自动发现;固定 IP 则填写
     # port: 0               # 0 = 用扫描到的端口
@@ -89,12 +87,17 @@ recorders:
     # impedance_max_kohm: 100    # 单通道通过阈值:阻抗 < 该值算通过
     # impedance_pass_rate: 0.87  # 通过率下限;低于则 open 失败并提示
     # impedance_edge_channels: [FT9, FT10, TP9, TP10, IO]  # 豁免(耳周/乳突/下颌端)
+    # leadoff 激励参数(SDK LeadOffFreq/LeadOffCurrent 的枚举属性名)。
+    # BCIGo 上位机的激励配置未知 —— 读数与它对不上时先换这两个试
+    # (如 Cur6uA 大电流,干电极信噪比更好);SDK 枚举缺该属性时报检测失败。
+    # impedance_freq: Ac31p2hz
+    # impedance_current: Cur6nA
 
   emg_left:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: weili_emg
     name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    port: "COM31"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
+    port: "COM1"          # 空 = 自动探测;左右接反时才固定,如 Windows "COM27" / Linux "/dev/ttyACM0"
     baud: 921600
     hz: 1000
     link_timeout: 0.1    # 链路静默判死:出过字节后静默这么久 → 臂环已断开
@@ -104,7 +107,7 @@ recorders:
     enabled: true       # 显式标记:此槽位启用(改 false 即整路关闭)
     kind: weili_emg
     name: "WLEMGUV2A"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
-    port: "COM30"
+    port: "COM2"
     baud: 921600
     hz: 1000
     link_timeout: 0.1    # 同 emg_left
@@ -114,7 +117,7 @@ recorders:
     kind: neon_eye_async
     name: "Pupil Labs Neon Wearable Eye Tracker"  # 设备显示名,写入 meta;目录/进程身份仍是上面的槽位键
     hz: 1000
-    link_timeout: 0.1             # 链路静默判死:某路流连续这么久没有新样本 →
+    link_timeout: 0.0             # 链路静默判死:某路流连续这么久没有新样本 →
                                   # 连接已死(半开 TCP 上流任务只是挂住)。0 = 关闭
     open_timeout: 120     # 内部预热最坏 ~90s(发现设备 10s + 传感器 10s + 三路首帧 3x20s);
                           # 默认 30s 看门狗会在正常冷启动时误判超时
@@ -140,7 +143,7 @@ recorders:
     # 序列号 ↔ VIVE 角色对照(2026-09-21 按当天的 VIVE 角色确认):
     #   61-BH3702202 = vive_tracker_chest        61-BH3700181 = vive_tracker_left_elbow
     #   61-BH3702186 = vive_tracker_right_elbow
-    role_serial_map: {"left_wrist": "61-BH3700181", "right_wrist": "61-BH3702186", "chest": "61-BH3702202"}
+    role_serial_map: {"left_wrist": "61-BH3700181", "right_wrist": "61-BH3702186", "head": "61-BH3702202"}
     hz: 1000
     require_all_valid: true   # 录制中任一 tracker 无效 pose(遮挡/掉线)→ 立即
                               # 终止录制:其余模态落盘、跳过 QC 直接进 n/r/f/q;
