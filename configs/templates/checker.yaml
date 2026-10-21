@@ -20,6 +20,11 @@ device_count:
   expected: 3             # VIVE tracker 台数(npz 设备轴数),与录制端
                           # recorders.yaml 的 expected_devices 保持一致
 
+camera_set:
+  expected: [left, right, bleft, bright]   # 头环应有的相机(录制端
+                          # camera_names),缺任一路 -> ERROR;部署改了
+                          # 相机名/数量时同步这里,否则 QC 会误报
+
 timestamp_jump:
   mult: 3.0               # 间隔 > mult × 中位间隔 = 跳变
 

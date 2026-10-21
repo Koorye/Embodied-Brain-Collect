@@ -6,7 +6,9 @@ from ``camera_names``, e.g. ``left``/``right``), each IMU is ``imu{j}_ts``
 / ``imu{j}_gyro`` / ``imu{j}_accel``.  ``prepare`` discovers
 however many the recording actually holds and registers one timestamp series
 each, then builds the check list to match — a fixed ClassVar set would
-false-alarm "缺少时间戳" on the streams this recording does not have.
+false-alarm "缺少时间戳" on the streams this recording does not have.  What
+the recording *should* hold is checked separately by :class:`CameraSet`,
+which compares the discovered names against the expected ``camera_names``.
 
 Cameras get the same video battery as the standalone camera checker (frame
 count vs timestamps, black, freeze), each keyed to its own ``{name}.mp4`` and
@@ -17,13 +19,61 @@ carry value distributions worth a MAD-outlier pass.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
-from .base import BaseChecker, CheckContext
+from .base import BaseCheck, BaseChecker, CheckContext, CheckOutput
 from .checks import (BlackFrame, FrameCountMatch, Freeze, MadOutlier,
                      ts_checks)
+from ..recorders.ego_headband.ego_headband_recorder_config import (
+    DEFAULT_CAMERA_NAMES)
 
 _CAM_TS = re.compile(r"^(\w+)_timestamps$")
 _IMU_TS = re.compile(r"^imu(\d+)_ts$")
+_IMU_LABEL = re.compile(r"^imu\d+$")
+
+
+@dataclass(frozen=True)
+class CameraSet(BaseCheck):
+    """Expected camera set against what the recording actually holds.
+
+    The device streams only the topics it reports at ``stream_start``, so a
+    camera whose publisher is down is absent from the NPZ entirely; every
+    per-camera check then skips and the remaining streams look healthy.  Only
+    the set itself reveals the loss (2026-10-19: ``bleft`` vanished for 19
+    sessions and QC stayed silent).  ``expected`` defaults to the recorder's
+    ``camera_names``; override via ``checker.yaml`` (``camera_set.expected``)
+    when a deployment configures a different set.
+    """
+
+    expected: tuple[str, ...] = DEFAULT_CAMERA_NAMES
+
+    def run(self, ctx: CheckContext) -> CheckOutput:
+        present = [label for label in ctx.series_labels
+                   if not _IMU_LABEL.match(label)]
+        expected = tuple(str(name) for name in self.expected)
+        missing = [name for name in expected if name not in set(present)]
+        extra = [name for name in present if name not in set(expected)]
+        out = CheckOutput()
+        out.stats.update({"n_cameras": len(present),
+                          "missing": missing, "extra": extra})
+        if missing:
+            out.findings.append(self.finding(
+                "ERROR",
+                f"仅 {len(present)}/{len(expected)} 路相机:"
+                f"缺少 {', '.join(missing)} — 设备端该话题未发布/未出流,"
+                "整段无数据",
+                field="cameras",
+                threshold=float(len(expected)), observed=float(len(present)),
+                detail={"missing": missing, "present": present,
+                        "expected": list(expected)}))
+        if extra:
+            out.findings.append(self.finding(
+                "WARN",
+                f"多出未配置的相机: {', '.join(extra)} —"
+                "与本机 camera_names 不一致",
+                field="cameras", detail={"extra": extra,
+                                         "expected": list(expected)}))
+        return out
 
 
 class EgoHeadbandChecker(BaseChecker):
@@ -38,7 +88,7 @@ class EgoHeadbandChecker(BaseChecker):
         cams = sorted(m.group(1) for k in keys if (m := _CAM_TS.match(k)))
         imus = sorted(int(m.group(1)) for k in keys if (m := _IMU_TS.match(k)))
 
-        checks: list = []
+        checks: list = [CameraSet()]
         for cam in cams:
             ctx.add_series(cam, key=f"{cam}_timestamps")
             checks += ts_checks(cam)
