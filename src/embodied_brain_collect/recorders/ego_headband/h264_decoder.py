@@ -1,4 +1,4 @@
-"""Stateful HAL Annex-B decoder. One baseline access unit yields one RGB frame.
+"""GPU-only HAL Annex-B preview decoder. One baseline access unit yields one RGB frame.
 
 Keep one instance per camera from the first subscription IDR through pre-roll
 and commit. Never decode P frames independently or reset at commit.
@@ -17,7 +17,15 @@ class H264Decoder:
 
     def __init__(self):
         self.av = self.check_available()
-        self.codec = self.av.CodecContext.create("h264", "r")
+        try:
+            from av.codec.hwaccel import HWAccel
+            self.codec = self.av.CodecContext.create(
+                "h264", "r", hwaccel=HWAccel("cuda", device="0", allow_software_fallback=False))
+            if not self.codec.is_hwaccel:
+                raise RuntimeError("CUDA hardware decoding was not activated")
+        except Exception as exc:
+            raise RuntimeError("H.264 preview requires NVIDIA GPU decoding; CPU fallback disabled") from exc
+        self.backend = "cuda"
         self.codec.thread_count = 1
         self.codec.thread_type = "SLICE"
         self.started = False

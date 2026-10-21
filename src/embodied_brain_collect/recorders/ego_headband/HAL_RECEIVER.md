@@ -1,29 +1,44 @@
-# HAL 头环接收（2026-10-19）
+# HAL 头环接收（2026-10-21）
 
-兼容 `wired_tcp-windows-20261019.zip`：TCP framing 与标定握手保持 v1。
-根据 `stream_start.topics` 自动选择旧 ROS JPEG 或 HAL Annex-B H.264。
-HAL 模式只接收 `/imu_data_raw`，不会伪造滤波 IMU。
+TCP framing、标定握手、音频/IMU 与输出文件名保持不变。
+根据 stream_start.topics 区分旧 ROS JPEG 与 HAL Annex-B H.264。
 
-H.264 使用 PyAV 为每路保留独立解码状态，从连接首个 IDR 开始解码；
-预热期间也解码，但不写入正式视频。每个排队包携带接收时的开录状态，
-避免异步预热帧在 commit 后混入视频。正式输出继续使用现有 HEVC MP4
-写盘器（GPU 优先），以及逐帧时间戳 NPZ；不假定 1920×1088，尺寸取自解码帧。
-CPU 解码、RGB 转换和 HEVC 编码的四路持续吞吐需要实机验证。
+## H.264 录制
 
-首包要求 IDR + SPS/PPS，且每包必须恰好解码出一个无 B 帧的图像。
-序号缺口、缺少采集时间戳、解码/写盘队列满会停止会话并记录错误。
-HAL 停止录制时先排空队列，再关闭视频容器，避免丢弃尾帧。
+四路 H.264 原始包通过 PyAV add_mux_stream 直接封装 MP4，不创建编码器或解码器。
+压缩图像字节不变；输出编码为 H.264（原来为 HEVC），每包对应一帧。
+保存原始采集时间戳到 NPZ；MP4 的 PTS/DTS 为相对首个保存帧的采集时间，精度为微秒。
+保留真实时间间隔，不补帧、不生成 CFR 时间戳。仅支持 camd baseline、无 B 帧。
 
-每次会话仍必须完成三份标定文件的大小、SHA-256、保存和 ACK 校验。
-标定存于 `<session>/ego_headband/calibrations/`，NPZ 保留文件名和哈希。
-音频的 PCM/WAV 与时间戳保存方式不变。`stream_source` 和 `stream_topics_json`
-记录在 NPZ，便于区分 HAL 与 ROS 数据源。
+正式录制从 commit 后每路首个 IDR + SPS/PPS 开始，丢弃之前依赖预热 GOP 的 P 帧；
+当前 GOP 约 1 秒，因此各路开头最多可能等待约 1 秒，必须按 NPZ 时间戳对齐。
+等待超过 5 秒仍无 IDR 或停止时没有可独立解码的视频会报错。
+NPZ 增加 video_storage=h264_passthrough、各路 video_start_ns、
+h264_start_skipped_frames 和 h264_start_wait_ns。
+序号缺口、时间戳倒退、SPS 改变、写盘失败和队列溢出均停止并报告；停止时排空包队列。
 
-离线测试（不访问设备）：
+## 预览
+
+操作说明中的 check_cameras 和采集员控制台的 HAL 预览共享 H264Decoder，
+使用 NVIDIA CUDA/NVDEC 硬件解码，allow_software_fallback=False。
+未配置预览端口的录制不解码；控制台预览启用时才创建硬件解码器。
+GPU 预览失败会明确记录并停用该路预览，不回退 CPU，不影响已经独立封装的视频。
+GPU 解码后的 RGB 转换、缩放和控制台 UDP JPEG 输出仍使用 CPU；这不是 H.264 软件解码。
+
+## 依赖和验收
+
+stay collect 环境使用 PyAV 18.1.0、RTX 3050。直接封装需要 add_mux_stream 接口；
+预览另需支持 CUDA 的 PyAV/FFmpeg 和 NVIDIA 驱动。运行中的旧采集不会自动切换，
+结束当前会话后重新启动采集程序和预览程序，使新代码生效。
+
+每次会话仍需三个标定文件的大小、SHA-256、落盘和 ACK 校验。
+标定位于 <session>/ego_headband/calibrations/；源头环标定不变。
+录制改为 H.264 后，pack_daily 的 HEVC 专用快速截段不适用，会走其既有重新编码回退路径。
+本次未修改打包策略或其他设备。
 
 ```powershell
 $env:PYTHONPATH='src'
-python -m unittest tests.ego_headband.test_hal_h264 tests.ego_headband.test_calibration_transfer -v
+python -m unittest tests.ego_headband.test_hal_h264 tests.ego_headband.test_calibration_transfer tests.ego_headband.test_microphone_commit tests.ego_headband.test_preview_stream -v
 ```
 
-依赖：`av`（当前 stay 的 collect 环境已安装）。
+测试使用合成数据，不连接头环；CUDA 预览测试需要 NVIDIA GPU。

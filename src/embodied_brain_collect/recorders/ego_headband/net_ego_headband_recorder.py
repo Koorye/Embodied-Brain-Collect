@@ -45,6 +45,7 @@ and both IMUs survive the wait and record once the session actually starts.
 
 import ctypes
 from .h264_decoder import H264Decoder
+from .h264_mux_writer import H264MuxWriter, nals
 import json
 from pathlib import Path
 import queue
@@ -144,6 +145,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self._cam_decode_dropped = {}
         self._h264_cameras = set()
         self._h264_decoders = {}
+        self._h264_ready = set()
 
     def __setstate__(self, state: dict) -> None:
         super().__setstate__(state)
@@ -167,6 +169,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         self.__dict__.setdefault("_cam_decode_dropped", {})
         self.__dict__.setdefault("_h264_cameras", set())
         self.__dict__.setdefault("_h264_decoders", {})
+        self.__dict__.setdefault("_h264_ready", set())
 
     # ---- lifecycle ------------------------------------------------------
 
@@ -181,8 +184,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         # 在第一个 commit 帧进写线程时才跑,四个写线程全部堵在锁上等它 ——
         # 冷启动停顿叠加写队列溢出,就是 session 开头掉帧的主因之一。提前到
         # open 的后台线程:与 TCP 连接/握手并行,commit 时只剩 Popen+首轮写入。
-        threading.Thread(target=_probe_gpu_transcode,
-                         name=f"{self.name}-gpu-probe", daemon=True).start()
+        # HAL passthrough needs no GPU encoder probe. Legacy JPEG probes lazily.
         try:
             self._sock = socket.create_connection(
                 (cfg.host, cfg.port), timeout=cfg.connect_timeout)
@@ -424,7 +426,8 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 i = cam_topics.index(topic)
                 kind = self._topics[topic]
                 if kind == "h264/annexb":
-                    H264Decoder.check_available()
+                    H264MuxWriter.check_available()
+                    self._static["video_storage"] = np.asarray("h264_passthrough")
                     self._h264_cameras.add(i)
                 elif kind != "sensor_msgs/CompressedImage":
                     raise ValueError(f"unsupported camera type: {kind}")
@@ -630,7 +633,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         if prev is None and meta.get("keyframe") is not True:
             raise ValueError("first H.264 frame must be an IDR")
         self._last_seq[topic] = seq
-        self._queue_h264(i, payload, stamp / 1e9, record, meta.get("keyframe"))
+        self._queue_h264(i, payload, stamp, record, meta.get("keyframe"))
 
     def _queue_h264(self, i, payload, stamp, record, keyframe):
         if i not in self._decode_queues:
@@ -644,89 +647,98 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
         try:
             self._decode_queues[i].put_nowait((payload, stamp, record, keyframe))
         except queue.Full as exc:
-            raise RuntimeError("H.264 decoder queue overflow; stopping without replacing frames") from exc
+            raise RuntimeError("H.264 packet queue overflow; stopping without replacing frames") from exc
 
     def _decode_h264_loop(self, i, q):
-        try:
-            decoder = H264Decoder()
-        except Exception as exc:
-            self._end_stream(f"H.264 decoder unavailable: {exc}")
-            return
-        self._h264_decoders[i] = decoder
+        # Each camera serializes compressed packets straight into MP4.
+        # GPU decoding is only for configured preview outputs.
+        key = self._cam_stem(i)
+        decoder = None
+        preview = self._preview_ports().get(key, 0) > 0
+        if preview:
+            try:
+                decoder = H264Decoder()
+                self._h264_decoders[i] = decoder
+                self._log(f"[{self.name}] {key} preview: CUDA hardware decode (no CPU fallback)")
+            except Exception as exc:
+                self._static[f"{key}_preview_error"] = np.asarray(str(exc))
+                self._log(f"[{self.name}] {key} preview disabled: {exc}", level="WARNING")
+        skipped = 0
+        first_record_ns = None
         while True:
             try:
-                payload, stamp, record, keyframe = q.get(timeout=0.1)
+                payload, stamp_ns, record, keyframe = q.get(timeout=0.1)
             except queue.Empty:
                 if self._decode_stop.is_set():
                     return
                 continue
             try:
-                rgb = decoder.decode(payload, keyframe)
-                # 辅助员控制台预览:解出来就推,与 record 无关 —— 预热/等待
-                # 开录期间辅助员同样需要看画面。失败从不影响录制。
-                self.preview_rgb(self._cam_stem(i), stamp, rgb)
-                self._enqueue_h264_rgb(self._cam_stem(i), stamp, rgb, record)
+                parts = nals(payload, keyframe)
+                if i not in self._h264_ready:
+                    if not keyframe or not {7, 8} <= {p[0] & 31 for p in parts}:
+                        raise ValueError("subscription must start with IDR + SPS/PPS")
+                    self._h264_ready.add(i)
                 self._cam_count[i] = self._cam_count.get(i, 0) + 1
+                if not record:
+                    self._frames_precommit += 1
+                elif self._save_enabled:
+                    # Reject capture times preceding commit, even if received later.
+                    cutoff = int((getattr(self, "_loop_t0", 0) or 0) * 1e9) if self._launch_mode else 0
+                    if stamp_ns >= cutoff:
+                        if first_record_ns is None:
+                            first_record_ns = stamp_ns
+                        writer = self._video_writers.get(key)
+                        if writer is None and not keyframe:
+                            skipped += 1
+                            self._static[f"{key}_h264_start_skipped_frames"] = np.asarray(skipped)
+                            if stamp_ns - first_record_ns > 5_000_000_000:
+                                raise RuntimeError("no recording-start IDR within 5 seconds")
+                        else:
+                            if writer is None:
+                                out = Path(self.config.session_dir) / self.output_dir
+                                out.mkdir(parents=True, exist_ok=True)
+                                path = out / f"{key}.mp4"
+                                writer = H264MuxWriter(path, self._write_fps(), payload)
+                                self._video_writers[key] = writer
+                                self._video_paths[key] = path
+                                self._last_shapes[key] = (writer.height, writer.width, 3)
+                                self._static[f"{key}_video_start_ns"] = np.asarray(stamp_ns, dtype=np.int64)
+                                self._static[f"{key}_h264_start_wait_ns"] = np.asarray(stamp_ns - first_record_ns, dtype=np.int64)
+                                self._log(f"[{self.name}] {key}: H.264 direct MP4 (no transcode), skipped {skipped} leading P frames")
+                            writer.write(payload, stamp_ns, keyframe)
+                            self._acc_ts(key, stamp_ns / 1e9)
+                            self._written[key] = self._written.get(key, 0) + 1
+                            self._frames_enqueued += 1
             except Exception as exc:
-                self._end_stream(f"H.264 cam{i} decode/write failed: {exc}")
+                self._end_stream(f"H.264 cam{i} mux failed: {exc}")
                 return
-
-    def _enqueue_h264_rgb(self, key, stamp, rgb, record):
-        if not self._save_enabled:
-            return
-        if self._write_failed:
-            raise RuntimeError("H.264 video writer failed")
-        self._start_write_worker(key, warm_data=rgb)
-        # The flag belongs to the packet's receive phase, not the worker's
-        # later execution time. A queued warm-up P frame must not leak into MP4.
-        if not record:
-            self._frames_precommit += 1
-            return
-        try:
-            self._write_queues[key].put((stamp, rgb), timeout=1.0)
-        except queue.Full as exc:
-            raise RuntimeError("H.264 video writer queue overflow") from exc
-        self._frames_enqueued += 1
-
-    def _write_queue_size(self):
-        # Decoded HAL frames are ~7 MB each, unlike compressed JPEGs.
-        return 8 if self._h264_cameras else super()._write_queue_size()
+            if decoder is not None:
+                try:
+                    rgb = decoder.decode(payload, keyframe)
+                    self.preview_rgb(key, stamp_ns / 1e9, rgb)
+                except Exception as exc:
+                    # Preview must never corrupt or stop the compressed recording.
+                    decoder = None
+                    self._static[f"{key}_preview_error"] = np.asarray(str(exc))
+                    self._log(f"[{self.name}] {key} GPU preview disabled: {exc}", level="WARNING")
 
     def _ready_to_commit(self):
         if self._ended:
             raise RuntimeError(self._ended_reason)
-        return (all(self._cam_stem(i) in self._video_writers for i in self._h264_cameras)
-                and super()._ready_to_commit())
+        return self._h264_cameras <= self._h264_ready and super()._ready_to_commit()
 
     def _stop_write_worker(self):
-        # HAL must flush every accepted frame, including a full queue at stop.
-        # Remove its workers before the legacy JPEG shutdown can drop a tail.
-        errors = []
+        self._stop_camera_decoders()
         for i in self._h264_cameras:
             key = self._cam_stem(i)
-            q = self._write_queues.get(key)
-            worker = self._write_threads.get(key)
-            if worker is not None:
+            writer = self._video_writers.pop(key, None)
+            if writer is not None:
                 try:
-                    q.put(None, timeout=30)
-                    worker.join(timeout=30)
-                    if worker.is_alive():
-                        raise RuntimeError(f"{key}: video writer did not drain")
-                except (queue.Full, RuntimeError) as exc:
-                    errors.append(str(exc))
-                    continue
-                self._write_queues.pop(key, None)
-                self._write_threads.pop(key, None)
-                writer = self._video_writers.pop(key, None)
-                if writer is not None:
-                    try:
-                        writer.close()
-                    except Exception as exc:
-                        errors.append(f"{key}: finalize failed: {exc}")
-        if errors:
-            self._end_stream("; ".join(errors))
-            self._static["h264_recording_error"] = np.asarray("; ".join(errors))
-            raise RuntimeError("; ".join(errors))
+                    writer.close()
+                except Exception as exc:
+                    self._end_stream(f"{key}: MP4 finalization failed: {exc}")
+            elif self._committed and self._save_enabled and not self._written.get(key):
+                self._end_stream(f"{key}: no independently decodable H.264 video recorded")
         super()._stop_write_worker()
 
     def _queue_camera(self, i: int, payload: bytes, t: float) -> None:

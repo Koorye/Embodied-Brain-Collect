@@ -110,8 +110,6 @@ class TestHeadbandPreview(unittest.TestCase):
 
     def test_h264_decode_loop_pushes_preview(self):
         """H.264 解码线程必须推预览 —— 这正是现场漏掉的那条路径。"""
-        from unittest.mock import patch
-
         from .test_hal_h264 import packets
 
         with PreviewSink() as sink:
@@ -121,10 +119,10 @@ class TestHeadbandPreview(unittest.TestCase):
                 "topics": {r.config.camera_topics[0]: "h264/annexb"}})
             data = packets(3)
             for i, (payload, keyframe) in enumerate(data):
-                r._queue_h264(0, payload, i / 30, False, keyframe)
+                r._queue_h264(0, payload, 1_000_000_000 + i * 33_333_333, False, keyframe)
             r._decode_stop.set()
-            with patch.object(r, "_enqueue_h264_rgb"):
-                r._stop_camera_decoders()
+            r._stop_camera_decoders()
+            self.assertTrue(r._h264_decoders[0].codec.is_hwaccel)
             got = sink.frames()
             r._close_preview()
 
