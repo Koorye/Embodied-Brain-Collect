@@ -69,7 +69,7 @@ _EMG_KEYS = ("observation.left_wrist_emg", "observation.right_wrist_emg")
 class _VideoResult(NamedTuple):
     slot: str
     key: str
-    n: int      # 写出的帧数(0 = 该槽位无输出)
+    n: int      # 写出的帧数(必需视频无输出时抛异常)
     log: str    # worker 里的告警输出,由主进程按序回放
 
 
@@ -248,25 +248,27 @@ def _cut_video_job(slot_dir: str, npz_name: str, ts_key: str, mp4_name: str,
                    t0: float, key: str, fps: int) -> _VideoResult:
     """进程池入口:一路视频的截段 + 时间戳 parquet(路径与原版一致)。
 
-    对应原版 write_episode 的视频段:文件缺失/npz 不可读 → n=0 静默
-    跳过;ffmpeg 失败则异常透传,主进程与原版一样直接崩。
+    必需视频的输入缺失、时间戳不可读或截段不完整时抛异常，禁止生成缺视频的包。
     """
     d = Path(slot_dir)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         npz_p, mp4_p = d / npz_name, d / mp4_name
         if not (npz_p.exists() and mp4_p.exists()):
-            return _VideoResult(d.name, key, 0, buf.getvalue())
+            raise FileNotFoundError(f"Required video input missing for {key}: {npz_p}, {mp4_p}")
         try:
             all_ts = np.load(npz_p, allow_pickle=True)[ts_key].astype(np.float64)
-        except Exception:
-            return _VideoResult(d.name, key, 0, buf.getvalue())
+        except Exception as exc:
+            raise RuntimeError(f"Cannot read required video timestamps for {key}: {npz_p}") from exc
         n = cut_video_aligned(mp4_p, Path(out_mp4), all_ts, win, t0, key, fps)
-        if n:
-            mask = _window_mask(all_ts, win) & (all_ts >= t0)
-            kept = np.where(mask)[0]
-            rel_ts = all_ts[kept[0]:kept[-1] + 1].astype(np.float64) - t0
-            _write_timestamps_parquet(Path(root), key, ep_idx, rel_ts)
+        if n <= 0:
+            raise RuntimeError(f"Required video produced no frames: {key}")
+        mask = _window_mask(all_ts, win) & (all_ts >= t0)
+        kept = np.where(mask)[0]
+        rel_ts = all_ts[kept[0]:kept[-1] + 1].astype(np.float64) - t0
+        if n != len(rel_ts):
+            raise RuntimeError(f"Required video frame count mismatch for {key}: {n} != {len(rel_ts)}")
+        _write_timestamps_parquet(Path(root), key, ep_idx, rel_ts)
     return _VideoResult(d.name, key, n, buf.getvalue())
 
 
@@ -346,6 +348,15 @@ def _build_specs(sessions: list[dict], video_slots, common: set[str]) -> dict:
                 "names": None,
             }
             break
+    required_video_keys = {
+        video_feature_key(suffix)
+        for entries in video_slots.values()
+        for _npz_name, _ts_key, _mp4_name, suffix in entries
+        if video_feature_key(suffix) in common
+    }
+    missing_video_specs = required_video_keys - set(specs)
+    if missing_video_specs:
+        raise RuntimeError(f"Required video specs missing: {sorted(missing_video_specs)}")
     return specs
 
 
@@ -359,6 +370,17 @@ def _write_episode(ds, session_dir: Path, task_label: str,
     master_abs 是独立 30Hz 时间轴(make_master_timeline),窗口模式下
     master_abs[0] 恰为 RUN_START,`ts >= t0` 不会切掉起始事件。
     """
+    video_keys = [key for key, spec in ds.features.items()
+                  if spec.get("dtype") == "video"]
+    results_by_key = {res.key: res for res in video_results.values()}
+    missing = set(video_keys) - set(results_by_key)
+    empty = [key for key in video_keys
+             if key in results_by_key and results_by_key[key].n <= 0]
+    if missing or empty:
+        raise RuntimeError(
+            f"Required video outputs incomplete: missing={sorted(missing)}, empty={sorted(empty)}")
+    base.validate_video_outputs(ds, video_keys, ds.meta.total_episodes)
+
     t0 = float(master_abs[0])
     master_rel = (master_abs - t0).astype(np.float64)
 
@@ -384,8 +406,6 @@ def _write_episode(ds, session_dir: Path, task_label: str,
         present.add(key)
 
     for slot, res in video_results.items():
-        if not res.n:
-            continue
         ds._features.pop(res.key, None)
         present.add(res.key)
         print(f"  {res.key}: 精确截段 {res.n} 帧 @{MASTER_FPS:.0f}fps")
@@ -396,10 +416,7 @@ def _write_episode(ds, session_dir: Path, task_label: str,
         f.next_episode()
         ds._features[k] = f
 
-    try:
-        ds.meta.update_video_info()
-    except Exception:
-        pass  # 个别 episode 缺视频文件时不阻塞打包
+    ds.meta.update_video_info()
 
     if dropped:
         print(f"[episode] '{session_dir.name}': 本会话缺少以下特征,已跳过 "
@@ -553,6 +570,8 @@ def main(argv: list[str] | None = None) -> int:
                 for slot, entries in video_slots.items():
                     for npz_name, ts_key, mp4_name, suffix in entries:
                         key = video_feature_key(suffix)
+                        if key not in video_keys:
+                            continue
                         out_mp4 = ds.root / DEFAULT_VIDEO_PATH.format(
                             episode_chunk=ep_idx // 1000, video_key=key,
                             episode_index=ep_idx)
@@ -581,6 +600,8 @@ def main(argv: list[str] | None = None) -> int:
                     video_results: dict[str, _VideoResult] = {}
                     for entries in video_slots.values():
                         for _npz_name, _ts_key, _mp4_name, suffix in entries:
+                            if video_feature_key(suffix) not in video_keys:
+                                continue
                             res = vid_futs[(i, suffix)].result()
                             video_results[suffix] = res
                             if res.log:

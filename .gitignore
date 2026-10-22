@@ -38,3 +38,4 @@ third_party/
 
 configs/environments/
 /configs/*.yaml
+egol3_upload_manifest.jsonl

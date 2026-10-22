@@ -3,7 +3,8 @@
     "allow": [
       "Bash(ls \"C:\\\\Projects\\\\Embodied-Brain-Collect\\\\data\\\\session\" | tail -15)",
       "Bash(find \"C:\\\\Projects\\\\Embodied-Brain-Collect\\\\data\\\\session\\\\2026-10-14-13-54-33\" -maxdepth 2 -name \"*.log\" -o -maxdepth 2 -name \"*.txt\" | head; echo \"---ego_headband---\"; ls -la \"C:\\\\Projects\\\\Embodied-Brain-Collect\\\\data\\\\session\\\\2026-10-14-13-54-33\\\\ego_headband\")",
-      "Bash(echo \"TERM=$TERM\"; echo \"COLORTERM=$COLORTERM\"; echo \"WT_SESSION=$WT_SESSION\"; echo \"TERMINAL_EMULATOR=$TERMINAL_EMULATOR\")"
+      "Bash(echo \"TERM=$TERM\"; echo \"COLORTERM=$COLORTERM\"; echo \"WT_SESSION=$WT_SESSION\"; echo \"TERMINAL_EMULATOR=$TERMINAL_EMULATOR\")",
+      "Bash(python - <<'EOF'\nimport json, glob, collections, pathlib\nc=collections.Counter\\(\\)\nfor p in glob.glob\\(r'data/lerobot/session*/**/meta/info.json', recursive=True\\):\n    d=json.load\\(open\\(p,encoding='utf-8'\\)\\)\n    n=sum\\('headband_imu' in k for k in d['features']\\)\n    parts=pathlib.PurePath\\(p\\).parts\n    date=next\\(\\(x for x in parts if x[:4].isdigit\\(\\) and x[4]=='-'\\), '?'\\)\n    c[\\(date,n\\)]+=1\nfor \\(date,n\\),cnt in sorted\\(c.items\\(\\)\\):\n    print\\(date, f'{n} imu\\(s\\):', cnt\\)\nEOF)"
     ]
   }
 }

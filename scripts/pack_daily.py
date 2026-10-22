@@ -1138,34 +1138,40 @@ def _smart_cut(src_mp4: Path, out_mp4: Path, i0: int, n: int, fps: int) -> None:
 
 def write_video_ffmpeg(src_mp4: Path, out_mp4: Path, seek_s: float,
                        dur_s: float, fps: int) -> int:
-    """ffmpeg 截段 + fps 归一化;返回输出帧数。
+    """Cut by decoded frame ordinal, preserving one packet per source timestamp.
 
-    默认智能截段(见 ``_smart_cut``):录制端契约成立时只重编码头部不足
-    一个 GOP 的边角,其余整 GOP 流拷贝。回退路径为全量重编码(原行为,
-    仅新增 ``-bf 0`` 与线程上限),两者输出同契约:CFR、PTS = i/fps、
-    无 B 帧,保持录制端"解码第 i 帧 == 第 i 个时间戳"的帧序不变量。
+    ``seek_s`` and ``dur_s`` retain the public API, but denote i0/fps and n/fps.
+    Capture PTS may be variable (H.264 passthrough), so time seeking and an fps
+    filter must never select, duplicate, or discard frames in the fallback.
     """
-    out_mp4.parent.mkdir(parents=True, exist_ok=True)
     n, i0 = round(dur_s * fps), round(seek_s * fps)
-    if n > 0 and _smart_cut_enabled():
+    if fps <= 0 or i0 < 0 or n <= 0:
+        raise ValueError("video cut requires positive fps/frame count and nonnegative start")
+    out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    if _smart_cut_enabled():
         try:
             _smart_cut(src_mp4, out_mp4, i0, n, fps)
             return n
         except Exception as exc:
-            print(f"[video] 智能截段回退全量重编码: {exc}")
+            print(f"[video] smart cut fallback to exact frame trim: {exc}")
             out_mp4.unlink(missing_ok=True)
     tmp = out_mp4.with_suffix(".tmp.mp4")
-    cmd = [media_tool("ffmpeg"), "-y", "-loglevel", "error",
-           "-ss", f"{max(0.0, seek_s):.3f}", "-i", str(src_mp4),
-           "-t", f"{max(0.0, dur_s):.3f}",
-           "-vf", f"fps={fps}", "-c:v", "libx264", "-preset", "veryfast",
-           "-bf", "0",
-           "-crf", "18", "-pix_fmt", "yuv420p", "-threads", str(_FFMPEG_THREADS),
-           str(tmp)]
-    subprocess.run(cmd, check=True, capture_output=True)
-    n_out = ffprobe_count(tmp)
-    tmp.replace(out_mp4)
-    return n_out
+    try:
+        _run_ffmpeg([
+            "-threads", str(_FFMPEG_THREADS), "-i", str(src_mp4),
+            "-map", "0:v:0", "-an", "-sn", "-dn",
+            "-vf", f"trim=start_frame={i0}:end_frame={i0 + n},settb=expr=1/{fps},setpts=N",
+            "-frames:v", str(n), "-enc_time_base", f"1:{fps}", "-fps_mode", "passthrough",
+            "-c:v", "libx264", "-preset", "veryfast", "-bf", "0",
+            "-crf", "18", "-pix_fmt", "yuv420p", "-threads", str(_FFMPEG_THREADS),
+            str(tmp)])
+        n_out = ffprobe_count(tmp)
+        if n_out != n:
+            raise RuntimeError(f"{src_mp4.name}: exact cut wrote {n_out}/{n} frames; packaging aborted")
+        tmp.replace(out_mp4)
+        return n_out
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def write_video_timestamps(ds, key: str, ep_idx: int, rel_ts: np.ndarray) -> None:
@@ -1248,8 +1254,8 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
 
     截段走 write_video_ffmpeg(默认智能截段:整 GOP 流拷贝 + 头部边角
     重编码,不满足录制端契约时全量重编码),输出统一 CFR、无 B 帧。
-    实际写出的帧数与窗口帧数不一致时丢弃该视频流并告警 —— 时间戳
-    parquet 与容器帧必须逐帧 1:1,宁缺毋错。
+    实际写出的帧数与窗口帧数不一致时中止打包。时间戳 parquet 与
+    容器帧必须逐帧 1:1,不得删除必需视频后继续发布不完整数据集。
 
     再用源视频内容自验:在 [i0-guard, i0+guard] 的容器帧里找与截段首帧
     最匹配的帧。实测录制严格 CFR 且容器帧序号与 npz 到达序号 1:1,匹配
@@ -1261,7 +1267,9 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
     mask = _window_mask(all_ts, win) & (all_ts >= t0)
     idx = np.where(mask)[0]
     if len(idx) < 2:
-        return 0
+        raise RuntimeError(f"{key}: fewer than two source frames in recording window")
+    if np.any(np.diff(all_ts) <= 0) or np.any(np.diff(idx) != 1):
+        raise RuntimeError(f"{key}: source timestamps must be strictly increasing and contiguous")
     i0, i1 = int(idx[0]), int(idx[-1])
     n = i1 - i0 + 1
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
@@ -1271,10 +1279,8 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
     try:
         naive0 = _decode_frame_at(out_mp4, 0)
     except Exception as exc:   # IndexError/解码错误:截段为空或损坏
-        print(f"[video] {key}: 截段无有效视频(源视频可能被截断或长度异常)"
-              f"— 跳过该视频流,其余模态继续打包({exc})")
         out_mp4.unlink(missing_ok=True)
-        return 0
+        raise RuntimeError(f"{key}: cut has no decodable video; packaging aborted") from exc
     lo = max(0, i0 - guard)
     cand = _decode_frames(src_mp4, lo, 2 * guard + 1)
     mses = {lo + j: float(((naive0 - f) ** 2).mean())
@@ -1290,12 +1296,28 @@ def cut_video_aligned(src_mp4: Path, out_mp4: Path, all_ts: np.ndarray,
 
     rel_ts = all_ts[i0:i1 + 1].astype(np.float64) - t0
     if n_out != len(rel_ts):
-        print(f"[video] {key}: 截段实际写出 {n_out} 帧,与窗口帧数 "
-              f"{len(rel_ts)} 不一致 — 时间戳无法逐帧对齐,丢弃该视频流,"
-              "其余模态继续打包")
         out_mp4.unlink(missing_ok=True)
-        return 0
+        raise RuntimeError(f"{key}: cut has {n_out}/{len(rel_ts)} frames; packaging aborted")
     return len(rel_ts)
+
+
+def validate_video_outputs(ds, video_keys, ep_idx: int) -> None:
+    """Require real video and timestamp files with identical, nonzero row counts."""
+    import pyarrow.parquet as pq
+    from mf_lerobot.utils import DEFAULT_VIDEO_PATH, DEFAULT_DATA_PATH
+
+    for key in sorted(video_keys):
+        video = ds.root / DEFAULT_VIDEO_PATH.format(
+            episode_chunk=ep_idx // 1000, video_key=key, episode_index=ep_idx)
+        timestamps = ds.root / DEFAULT_DATA_PATH.format(
+            episode_chunk=ep_idx // 1000, episode_index=ep_idx, feature_key=key)
+        for path in (video, timestamps):
+            if not path.is_file() or path.stat().st_size == 0:
+                raise RuntimeError(f"{key}: required output missing/empty: {path}")
+        n_frames = ffprobe_count(video)
+        n_rows = pq.ParquetFile(timestamps).metadata.num_rows
+        if n_frames <= 0 or n_frames != n_rows:
+            raise RuntimeError(f"{key}: final video/timestamps mismatch {n_frames}/{n_rows}; packaging aborted")
 
 
 def write_episode(ds, session_dir: Path, task_label: str, master_abs: np.ndarray,
@@ -1306,6 +1328,7 @@ def write_episode(ds, session_dir: Path, task_label: str, master_abs: np.ndarray
     t0 = float(master_abs[0])
     master_rel = (master_abs - t0).astype(np.float64)
     ep_idx = ds.meta.total_episodes
+    required_videos = {key for key in ds._features if key.startswith("observation.images.")}
 
     for t in master_rel:
         ds.add_frame("task", task_label, float(t))
@@ -1375,8 +1398,12 @@ def write_episode(ds, session_dir: Path, task_label: str, master_abs: np.ndarray
                 print(f"  {MICROPHONE_KEY}: {len(sel)} 块 @{mic['rate']}Hz "
                       f"{mic['channels']}ch")
 
+    missing_videos = required_videos - present
+    if missing_videos:
+        raise RuntimeError(f"{session_dir.name}: missing required videos {sorted(missing_videos)}")
     dropped = {k: ds._features.pop(k) for k in list(ds._features) if k not in present}
     ds.save_episode()
+    validate_video_outputs(ds, required_videos, ep_idx)
     for k, f in dropped.items():
         f.next_episode()
         ds._features[k] = f

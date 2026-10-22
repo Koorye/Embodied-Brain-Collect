@@ -44,6 +44,7 @@ import io
 import re
 import shutil
 import sys
+import tempfile
 import threading
 import time
 import types
@@ -65,7 +66,7 @@ from pack_daily import (  # noqa: E402
     filter_meta_status, filter_qc_errors, load_marker_window,
     load_microphone_chunks, load_microphone_index, load_parquet_streams,
     load_task_label, write_calibrations_meta, write_collect_meta,
-    write_qc_meta,
+    validate_video_outputs, video_feature_key, write_qc_meta,
 )
 from pack_daily_fast import (  # noqa: E402
     _build_specs, _default_workers, _probe_session_full, _probe_session_index,
@@ -85,7 +86,7 @@ _DATA_PATH_FMT = ("data/chunk-{episode_chunk:03d}/episode_{episode_index:06d}/"
 class _VideoResult(NamedTuple):
     slot: str
     key: str
-    n: int      # 写出的帧数(0 = 该槽位无输出)
+    n: int      # 必需视频写出的帧数;必须 > 0
     log: str    # worker 里的告警输出,由主进程按序回放
 
 
@@ -121,6 +122,75 @@ def _load_collector_id(sd: Path) -> str | None:
     return s or None
 
 
+def _source_video_keys(session_dir: Path, video_slots) -> set[str]:
+    """NPZ 声明的视频均为必需,源文件缺失也不能从发现阶段静默消失。"""
+    required = {video_feature_key(entry[3])
+                for entries in video_slots.values() for entry in entries}
+    for d in sorted(session_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        if d.name == "ego_headband":
+            npz_name = "ego_headband.npz"
+        elif d.name == "eye":
+            npz_name = "eye.npz"
+        elif d.name.startswith("cam_") or d.name in video_slots:
+            npz_name = f"{d.name}.npz"
+        else:
+            continue
+        npz_path = d / npz_name
+        if not npz_path.is_file():
+            raise RuntimeError(f"必需视频槽位缺少索引: {npz_path}")
+        with np.load(npz_path, allow_pickle=False) as z:
+            if d.name == "ego_headband":
+                entries = [(f"{k[:-len('_timestamps')]}.mp4",
+                            f"headband_{k[:-len('_timestamps')]}")
+                           for k in z.files if k.endswith("_timestamps")]
+            elif d.name == "eye":
+                entries = [("eye.mp4", "eye")] if "scene_timestamps" in z.files else []
+            else:
+                suffix = d.name[4:] if d.name.startswith("cam_") else d.name
+                entries = [("frames.mp4", suffix)] if "frames_timestamps" in z.files else []
+        if not entries:
+            raise RuntimeError(f"必需视频槽位没有相机时间戳: {npz_path}")
+        for filename, suffix in entries:
+            if not (d / filename).is_file():
+                raise RuntimeError(f"必需视频缺失: {d / filename}")
+            required.add(video_feature_key(suffix))
+    return required
+
+
+def _require_video_results(video_results, required_keys: set[str]) -> None:
+    """一个必需视频失败就中止整条打包,避免部分包被当成完整数据上传。"""
+    by_key = {}
+    for res in video_results.values():
+        if res.key in by_key:
+            raise RuntimeError(f"视频截段结果重复: {res.key}")
+        by_key[res.key] = res
+    failed = sorted(k for k in required_keys
+                    if k not in by_key or by_key[k].n <= 0)
+    if failed:
+        raise RuntimeError(f"必需视频截段失败/缺少结果: {failed}")
+
+
+def _publish_output(staged: Path, target: Path, force: bool) -> None:
+    """完整包通过验证后再发布;--force 的旧包保留到新包成功接管。"""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    previous = staged.parent / "previous-output"
+    if target.exists():
+        if not force:
+            raise FileExistsError(f"输出目录已存在: {target}")
+        shutil.move(str(target), str(previous))
+    try:
+        shutil.move(str(staged), str(target))
+    except BaseException:
+        # 跨卷 move 可能留下未复制完整的目标,恢复旧包前先撤掉它。
+        if target.exists():
+            shutil.rmtree(target)
+        if previous.exists():
+            shutil.move(str(previous), str(target))
+        raise
+
+
 # ── worker:视频截段(不 import mf_lerobot,spawn 子进程免 torch 冷启动)────
 
 def _cut_video_job(slot_dir: str, npz_name: str, ts_key: str, mp4_name: str,
@@ -130,24 +200,28 @@ def _cut_video_job(slot_dir: str, npz_name: str, ts_key: str, mp4_name: str,
 
     与 pack_daily_fast._cut_video_job 同一件事,两处不同:parquet 路径由
     主进程算好传入(worker 不必 import mf_lerobot);stdout 捕获回放一致。
-    文件缺失/npz 不可读 → n=0 静默跳过;ffmpeg 失败则异常透传,主进程与
-    原版一样直接崩。
+    源文件/索引缺失、零帧或截段失败均抛错,整条打包失败。
     """
     d = Path(slot_dir)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         npz_p, mp4_p = d / npz_name, d / mp4_name
-        if not (npz_p.exists() and mp4_p.exists()):
-            return _VideoResult(d.name, key, 0, buf.getvalue())
+        if not (npz_p.is_file() and mp4_p.is_file()):
+            raise FileNotFoundError(f"必需视频源文件/索引缺失: {key}: {mp4_p}, {npz_p}")
         try:
-            all_ts = np.load(npz_p, allow_pickle=True)[ts_key].astype(np.float64)
-        except Exception:
-            return _VideoResult(d.name, key, 0, buf.getvalue())
+            with np.load(npz_p, allow_pickle=True) as z:
+                all_ts = z[ts_key].astype(np.float64)
+        except Exception as exc:
+            raise RuntimeError(f"必需视频时间戳不可读: {key}: {npz_p}") from exc
         n = cut_video_aligned(mp4_p, Path(out_mp4), all_ts, win, t0, key, fps)
+        if n <= 0:
+            raise RuntimeError(f"必需视频截段无输出: {key}")
         if n:
             mask = _window_mask(all_ts, win) & (all_ts >= t0)
             kept = np.where(mask)[0]
             rel_ts = all_ts[kept[0]:kept[-1] + 1].astype(np.float64) - t0
+            if n != len(rel_ts):
+                raise RuntimeError(f"必需视频帧数与时间戳不一致: {key}: {n}/{len(rel_ts)}")
             import pyarrow as pa
             import pyarrow.parquet as pq
             fpath = Path(out_parquet)
@@ -166,7 +240,8 @@ def _cut_video_job(slot_dir: str, npz_name: str, ts_key: str, mp4_name: str,
 
 def _write_episode(ds, session_dir: Path, task_label: str,
                    master_abs: np.ndarray, streams, win,
-                   video_results: dict[str, _VideoResult]) -> None:
+                   video_results: dict[str, _VideoResult],
+                   required_video_keys: set[str]) -> None:
     """= pack_daily.write_episode,去掉 tqdm、视频段换成预截结果。
 
     master_abs 是独立 30Hz 时间轴(make_master_timeline),窗口模式下
@@ -175,6 +250,7 @@ def _write_episode(ds, session_dir: Path, task_label: str,
     每个流的样本数在写入前打印(数量已知)——写帧循环是主进程里最长的
     串行段,不能等写完才出日志。
     """
+    _require_video_results(video_results, required_video_keys)
     t0 = float(master_abs[0])
     master_rel = (master_abs - t0).astype(np.float64)
 
@@ -201,8 +277,8 @@ def _write_episode(ds, session_dir: Path, task_label: str,
         present.add(key)
 
     for slot, res in video_results.items():
-        if not res.n:
-            continue
+        if res.n <= 0:
+            raise RuntimeError(f"视频截段无输出: {res.key}")
         ds._features.pop(res.key, None)
         present.add(res.key)
         print(f"  {res.key}: 精确截段 {res.n} 帧 @{MASTER_FPS:.0f}fps")
@@ -231,17 +307,14 @@ def _write_episode(ds, session_dir: Path, task_label: str,
         f.next_episode()
         ds._features[k] = f
 
-    try:
-        ds.meta.update_video_info()
-    except Exception:
-        pass  # 个别 episode 缺视频文件时不阻塞打包
+    ds.meta.update_video_info()
 
     if dropped:
         print(f"[episode] '{session_dir.name}': 本会话缺少以下特征,已跳过 "
               f"{sorted(dropped)}")
 
 
-def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
+def _main(argv: list[str] | None = None, *, gated: bool = True) -> int:
     """``gated=False``:跳过 QC / meta status 门槛 —— 仅供采集侧
     (launcher.run_pack_episode,经 run_base.run_queue 以"QC 无错且操作员
     保留"为触发条件)进程内调用,同一信息源不再判第二次;独立 CLI 一律
@@ -259,7 +332,7 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
                          "lerobot,会话名按 <日期>/<collector_id>-<日期>-<时刻>"
                          "组织;指定时数据集直接落在该目录)")
     ap.add_argument("--force", action="store_true",
-                    help="输出目录已存在时先删除")
+                    help="新包验证通过后替换已有输出目录")
     ap.add_argument("--full", action="store_true",
                     help="使用整段录制,忽略 RUN_START..RUN_END 标记窗口")
     ap.add_argument("--keep-images", action="store_true",
@@ -318,6 +391,7 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
             return 1
 
     video_slots = discover_video_slots(sessions)
+    required_video_keys = _source_video_keys(sd, video_slots)
     if not video_slots:
         print("[error] 会话没有可用的视频流")
         return 1
@@ -332,7 +406,14 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
         print("[error] 会话不可打包(见上方跳过原因)")
         return 1
 
+    missing_probe = required_video_keys - info["present"]
+    if missing_probe:
+        raise RuntimeError(f"必需视频在运行窗口内无数据: {sorted(missing_probe)}")
     specs = _build_specs([info], video_slots, info["present"])
+    missing_specs = {k for k in required_video_keys
+                     if specs.get(k, {}).get("dtype") != "video"}
+    if missing_specs:
+        raise RuntimeError(f"必需视频无法建立特征规格: {sorted(missing_specs)}")
     if not specs:
         print("[error] 会话没有可用数据流")
         return 1
@@ -367,118 +448,133 @@ def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
         if not args.force:
             print(f"[error] 输出目录已存在: {out} (用 --force 覆盖)")
             return 1
-        shutil.rmtree(out)
+    final_out = out
 
-    # 视频截段的落盘暂存区:数据集 create() 要求输出目录在创建时不存在,
-    # 而截段 worker 会先写进 out —— 先写 <out>.cutting,创建完成后整体
-    # 搬入(同卷 rename,瞬时)。残留的旧暂存区在这里一并清掉
-    scratch = out.parent / f"{out.name}.cutting"
-    if scratch.exists():
-        shutil.rmtree(scratch)
+    # 全部输出在系统临时目录内构建并核验,失败不留下可上传的半成品。
+    with tempfile.TemporaryDirectory(prefix="ego-pack-") as staging_dir:
+        out = Path(staging_dir) / final_out.name
 
-    from embodied_brain_collect.session import environment as env_mod
-    from pack_daily import video_feature_key
-    t0 = float(info["master"][0])
-    video_keys = [k for k, ft in specs.items() if ft.get("dtype") == "video"]
+        # 视频截段的落盘暂存区:数据集 create() 要求输出目录在创建时不存在,
+        # 而截段 worker 会先写进 out —— 先写 <out>.cutting,创建完成后整体
+        # 搬入(同卷 rename,瞬时)。残留的旧暂存区在这里一并清掉
+        scratch = out.parent / f"{out.name}.cutting"
+        if scratch.exists():
+            shutil.rmtree(scratch)
 
-    # ---- 视频截段全部提前提交:独立进程池,与 npz 装载、写帧循环重叠 ----
-    # 提交先于 mf_lerobot 就绪:输出目录全新,episode 恒为 0,路径用镜像
-    # 常量(导入后核对),torch 冷启动被截段完全覆盖。
-    # (ego_headband 一槽多路:每个 <name> 是独立 entry/特征,逐 entry 提交)
-    jobs = [(slot, npz_name, ts_key, mp4_name, suffix)
-            for slot, entries in video_slots.items()
-            for npz_name, ts_key, mp4_name, suffix in entries]
-    # 长作业优先(按源 mp4 大小降序):4 路 headband 立刻占满进程池,小
-    # 相机随后补位 —— 尾延迟由最大的流决定,不被小流挤到错峰启动
-    def _job_size(j: tuple) -> int:
-        try:
-            return (sd / j[0] / j[3]).stat().st_size
-        except OSError:
-            return 0
-    jobs.sort(key=_job_size, reverse=True)
-    workers = args.workers or _default_workers()
-    ep_idx = 0        # 全新数据集;创建后与 ds.meta.total_episodes 核对
-    _phase(f"提交 {len(jobs)} 路视频截段(workers={min(workers, max(1, len(jobs)))},"
-           "与装载/依赖导入重叠执行)")
-    with ProcessPoolExecutor(max_workers=min(workers, max(1, len(jobs)))) as pool:
-        futs: dict[str, object] = {}
-        for slot, npz_name, ts_key, mp4_name, suffix in jobs:
-            key = video_feature_key(suffix)
-            futs[suffix] = pool.submit(
-                _cut_video_job, str(sd / slot), npz_name, ts_key, mp4_name,
-                str(scratch / _VIDEO_PATH_FMT.format(
-                    episode_chunk=ep_idx // 1000, video_key=key,
-                    episode_index=ep_idx)),
-                str(scratch / _DATA_PATH_FMT.format(
-                    episode_chunk=ep_idx // 1000, episode_index=ep_idx,
-                    feature_key=key)),
-                ep_idx, tuple(info["win"]), t0, key, int(MASTER_FPS))
-        try:
-            task_label = load_task_label(sd, env_mod)
-            _phase("装载 npz 数据流(整段解压)…")
-            streams = [s for s in load_parquet_streams(sd)
-                       if s[0] in info["present"]]
+        from embodied_brain_collect.session import environment as env_mod
+        t0 = float(info["master"][0])
+        video_keys = set(required_video_keys)
 
-            # ---- 预加载收口:路径契约核对 + 创建数据集 ----
-            preload.join()
-            if "error" in _mf:
-                raise _mf["error"]
-            if (_mf["utils"].DEFAULT_VIDEO_PATH != _VIDEO_PATH_FMT
-                    or _mf["utils"].DEFAULT_DATA_PATH != _DATA_PATH_FMT):
-                raise RuntimeError("mf_lerobot 路径契约变化 — 请同步更新 "
-                                   "pack_episode 的镜像常量")
-            _phase("mf_lerobot 就绪,创建数据集…")
-            ds = _mf["dataset"].create(
-                repo_id=repo_id, fps=MASTER_FPS,
-                features=specs, root=out, use_videos=True,
-                save_threads=args.save_threads)
-            if ds.meta.total_episodes != ep_idx:
-                raise RuntimeError(
-                    f"新数据集 episode 应为 {ep_idx},实际 "
-                    f"{ds.meta.total_episodes} — 视频已按 {ep_idx} 提交,中止")
-            # 逐路即时回报完成情况(等待期间不再静默),日志按各 worker
-            # 捕获顺序回放,结果按 suffix 归位
-            by_fut = {f: suffix for suffix, f in futs.items()}
-            video_results: dict[str, _VideoResult] = {}
-            for fut in as_completed(by_fut):
-                res: _VideoResult = fut.result()
-                video_results[by_fut[fut]] = res
-                if res.log:
-                    sys.stdout.write(res.log)
-                    sys.stdout.flush()
-                _phase(f"视频截段完成: {res.key}({res.n} 帧)")
-            # 暂存区产物搬入最终位置(mp4 + 时间戳 parquet,逐路两文件)
-            for suffix, res in video_results.items():
-                if not res.n:
-                    continue
+        # ---- 视频截段全部提前提交:独立进程池,与 npz 装载、写帧循环重叠 ----
+        # 提交先于 mf_lerobot 就绪:输出目录全新,episode 恒为 0,路径用镜像
+        # 常量(导入后核对),torch 冷启动被截段完全覆盖。
+        # (ego_headband 一槽多路:每个 <name> 是独立 entry/特征,逐 entry 提交)
+        jobs = [(slot, npz_name, ts_key, mp4_name, suffix)
+                for slot, entries in video_slots.items()
+                for npz_name, ts_key, mp4_name, suffix in entries]
+        # 长作业优先(按源 mp4 大小降序):4 路 headband 立刻占满进程池,小
+        # 相机随后补位 —— 尾延迟由最大的流决定,不被小流挤到错峰启动
+        def _job_size(j: tuple) -> int:
+            try:
+                return (sd / j[0] / j[3]).stat().st_size
+            except OSError:
+                return 0
+        jobs.sort(key=_job_size, reverse=True)
+        workers = args.workers or _default_workers()
+        ep_idx = 0        # 全新数据集;创建后与 ds.meta.total_episodes 核对
+        _phase(f"提交 {len(jobs)} 路视频截段(workers={min(workers, max(1, len(jobs)))},"
+               "与装载/依赖导入重叠执行)")
+        with ProcessPoolExecutor(max_workers=min(workers, max(1, len(jobs)))) as pool:
+            futs: dict[str, object] = {}
+            for slot, npz_name, ts_key, mp4_name, suffix in jobs:
                 key = video_feature_key(suffix)
-                for fmt in (_VIDEO_PATH_FMT, _DATA_PATH_FMT):
-                    rel = fmt.format(episode_chunk=ep_idx // 1000,
-                                     video_key=key, episode_index=ep_idx,
-                                     feature_key=key)
-                    src, dst = scratch / rel, out / rel
-                    if src.exists():
+                futs[suffix] = pool.submit(
+                    _cut_video_job, str(sd / slot), npz_name, ts_key, mp4_name,
+                    str(scratch / _VIDEO_PATH_FMT.format(
+                        episode_chunk=ep_idx // 1000, video_key=key,
+                        episode_index=ep_idx)),
+                    str(scratch / _DATA_PATH_FMT.format(
+                        episode_chunk=ep_idx // 1000, episode_index=ep_idx,
+                        feature_key=key)),
+                    ep_idx, tuple(info["win"]), t0, key, int(MASTER_FPS))
+            try:
+                task_label = load_task_label(sd, env_mod)
+                _phase("装载 npz 数据流(整段解压)…")
+                streams = [s for s in load_parquet_streams(sd)
+                           if s[0] in info["present"]]
+
+                # ---- 预加载收口:路径契约核对 + 创建数据集 ----
+                preload.join()
+                if "error" in _mf:
+                    raise _mf["error"]
+                if (_mf["utils"].DEFAULT_VIDEO_PATH != _VIDEO_PATH_FMT
+                        or _mf["utils"].DEFAULT_DATA_PATH != _DATA_PATH_FMT):
+                    raise RuntimeError("mf_lerobot 路径契约变化 — 请同步更新 "
+                                       "pack_episode 的镜像常量")
+                _phase("mf_lerobot 就绪,创建数据集…")
+                ds = _mf["dataset"].create(
+                    repo_id=repo_id, fps=MASTER_FPS,
+                    features=specs, root=out, use_videos=True,
+                    save_threads=args.save_threads)
+                if ds.meta.total_episodes != ep_idx:
+                    raise RuntimeError(
+                        f"新数据集 episode 应为 {ep_idx},实际 "
+                        f"{ds.meta.total_episodes} — 视频已按 {ep_idx} 提交,中止")
+                # 逐路即时回报完成情况(等待期间不再静默),日志按各 worker
+                # 捕获顺序回放,结果按 suffix 归位
+                by_fut = {f: suffix for suffix, f in futs.items()}
+                video_results: dict[str, _VideoResult] = {}
+                for fut in as_completed(by_fut):
+                    res: _VideoResult = fut.result()
+                    video_results[by_fut[fut]] = res
+                    if res.log:
+                        sys.stdout.write(res.log)
+                        sys.stdout.flush()
+                    _phase(f"视频截段完成: {res.key}({res.n} 帧)")
+                _require_video_results(video_results, required_video_keys)
+                # 暂存区产物搬入系统临时数据集(mp4 + 时间戳 parquet,逐路两文件)
+                for suffix, res in video_results.items():
+                    if res.n <= 0:
+                        raise RuntimeError(f"必需视频截段无输出: {res.key}")
+                    key = video_feature_key(suffix)
+                    for fmt in (_VIDEO_PATH_FMT, _DATA_PATH_FMT):
+                        rel = fmt.format(episode_chunk=ep_idx // 1000,
+                                         video_key=key, episode_index=ep_idx,
+                                         feature_key=key)
+                        src, dst = scratch / rel, out / rel
+                        if not src.is_file():
+                            raise FileNotFoundError(f"必需视频打包产物缺失: {src}")
                         dst.parent.mkdir(parents=True, exist_ok=True)
                         src.replace(dst)
-            shutil.rmtree(scratch, ignore_errors=True)
-            _phase("视频全部就绪,写帧…")
-            _write_episode(ds, sd, task_label, info["master"], streams,
-                           info["win"], video_results)
-        finally:
-            for f in futs.values():
-                f.cancel()
-            shutil.rmtree(scratch, ignore_errors=True)
-    if not args.keep_images:
-        _cleanup_images(out, ep_idx, video_keys)
+                shutil.rmtree(scratch, ignore_errors=True)
+                _phase("视频全部就绪,写帧…")
+                _write_episode(ds, sd, task_label, info["master"], streams,
+                               info["win"], video_results, required_video_keys)
+            finally:
+                for f in futs.values():
+                    f.cancel()
+                shutil.rmtree(scratch, ignore_errors=True)
+        if not args.keep_images:
+            _cleanup_images(out, ep_idx, video_keys)
 
-    write_qc_meta(out, [info])
-    write_collect_meta(out, [info])
-    # 头环标定快照逐 episode 落 meta/calibrations.jsonl
-    write_calibrations_meta(out, [info])
+        write_qc_meta(out, [info])
+        write_collect_meta(out, [info])
+        # 头环标定快照逐 episode 落 meta/calibrations.jsonl
+        write_calibrations_meta(out, [info])
+        validate_video_outputs(ds, required_video_keys, ep_idx)
+        _publish_output(out, final_out, bool(args.force))
 
-    print(f"[done] 1 episode, {ds.meta.total_frames} frames → {out} "
-          f"(用时 {time.perf_counter() - t_start:.1f}s)")
-    return 0
+        print(f"[done] 1 episode, {ds.meta.total_frames} frames → {final_out} "
+              f"(用时 {time.perf_counter() - t_start:.1f}s)")
+        return 0
+
+
+def main(argv: list[str] | None = None, *, gated: bool = True) -> int:
+    try:
+        return _main(argv, gated=gated)
+    except Exception as exc:
+        print(f"[error] episode 打包失败: {type(exc).__name__}: {exc}", flush=True)
+        return 1
 
 
 if __name__ == "__main__":
