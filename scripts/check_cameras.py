@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import queue
 import socket
 import sys
 import threading
@@ -189,9 +190,22 @@ class _HeadbandFeed:
     与 net_ego_headband_recorder 说同一套协议(帧格式常量、时钟回复函数
     直接从 recorder 模块导入,协议变了这边跟着变):hello → 回 time_probe
     → 接收并校验三个标定文件 → calibration_ack → stream_start 后,
-    常驻一个读线程排空 socket,每路相机只保留最新一帧
-    的解码结果 —— JPEG 可跳过旧帧,H.264 必须连续解码后再取最新帧。
+    常驻一个读线程**只收包、不解码**,每路 H.264 另有独立解码线程。
+
+    解码和收包必须分开:4 路 1920x1200 H.264 全解在弱机上可能追不上
+    120fps 的入流,若在读线程里同步解码,socket 就没人排空,积压会一路
+    涨到设备端丢帧(实测超过 128MB),随后序号跳变让整条预览(四路)
+    一起黑屏。现在解码落后只会丢**本路**的积压帧,并跳到下一个 IDR 重新
+    起解 —— 预览永远只显示最新画面,内存有界。
     """
+
+    #: 每路预览输出帧率上限。H.264 必须逐帧解码(参考帧不能跳),但
+    #: GPU→CPU 拷贝 + BGR 转换只按这个节奏做;>=15fps 预览已足够顺滑。
+    PREVIEW_FPS = 15.0
+    #: 每路解码队列上限(帧)。约 1.5s @30fps;满了就丢积压、等下一个 IDR。
+    H264_QUEUE_MAX = 45
+    #: socket 接收缓冲:吸收开窗/后台负载造成的亚秒级突发。
+    SOCK_RCVBUF = 8 * 1024 * 1024
 
     def __init__(self, host: str, port: int, camera_topics, connect_timeout: float):
         self.host = host
@@ -200,7 +214,7 @@ class _HeadbandFeed:
         self.connect_timeout = connect_timeout
         self.synced: bool | None = None    # 设备时钟同步结果(仅展示用)
         self.advertised: dict = {}         # stream_start 报告的全部 topic
-        self.error = ""
+        self.error = ""                    # 连接级致命错误(整条 feed 不可用)
         self.calibrations: list[dict] = []  # 本次连接校验通过的标定清单
         self._net = None                   # net_ego_headband_recorder 模块
         self._sock: socket.socket | None = None
@@ -209,18 +223,38 @@ class _HeadbandFeed:
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        # ---- 解码侧(与收包线程分离) ----
+        self._decode_stop = threading.Event()
+        self._h264_q: dict[str, queue.Queue] = {}
+        self._h264_threads: dict[str, threading.Thread] = {}
+        self._h264_resync: set[str] = set()   # 等下一个 IDR 再起解
+        self._topic_error: dict[str, str] = {}  # 单路解码/落后说明,不杀整条流
+        self._jpeg_pending: dict[str, bytes] = {}  # JPEG 只留最新一帧
+        self._jpeg_thread: threading.Thread | None = None
+        self._last_seq: dict[str, int] = {}        # H.264 topic -> 上一帧序号
 
     # ---- 握手(与 recorder 的 _handshake 同流程,不要求同步成功)----
 
     def open(self) -> bool:
         self.close()
-        if self._thread is not None and self._thread.is_alive():
+        alive = self._thread is not None and self._thread.is_alive()
+        alive = alive or any(t.is_alive() for t in self._h264_threads.values())
+        alive = alive or (self._jpeg_thread is not None
+                          and self._jpeg_thread.is_alive())
+        if alive:
             self.error = "上一次预览线程尚未退出,请稍后重试"
             return False
         self._stop.clear()
+        self._decode_stop.clear()
         self._rx.clear()
         with self._lock:
             self._latest.clear()
+        self._h264_q.clear()
+        self._h264_threads.clear()
+        self._h264_resync.clear()
+        self._topic_error.clear()
+        self._jpeg_pending.clear()
+        self._last_seq.clear()
         self.error = ""
         self.synced = None
         self.advertised = {}
@@ -240,6 +274,12 @@ class _HeadbandFeed:
             self._sock = socket.create_connection(
                 (self.host, self.port), timeout=self.connect_timeout)
             self._sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # 设备持续高速出流,收包线程偶尔被调度延迟时需要缓冲兜底。
+            try:
+                self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF,
+                                      self.SOCK_RCVBUF)
+            except OSError:
+                pass
             # 必须支持标定传输;预览不请求麦克风。
             self._send({"kind": "hello", "version": net._VERSION,
                         "capabilities": [CAPABILITY]})
@@ -286,12 +326,15 @@ class _HeadbandFeed:
                 self.error = f"握手失败 — {type(exc).__name__}: {exc}"
                 self._close_sock()
                 return False
+        self._jpeg_thread = threading.Thread(
+            target=self._jpeg_worker, name="headband-check-jpeg", daemon=True)
+        self._jpeg_thread.start()
         self._thread = threading.Thread(
             target=self._reader_loop, name="headband-check-reader", daemon=True)
         self._thread.start()
         return True
 
-    # ---- 常驻读线程:排空 socket,相机 topic 只留最新解码帧 ----
+    # ---- 常驻读线程:只排空 socket + 分发,解码在各路独立线程 ----
 
     def _reader_loop(self) -> None:
         try:
@@ -302,13 +345,7 @@ class _HeadbandFeed:
             self._close_sock()
 
     def _read_stream(self) -> None:
-        import cv2
-        import numpy as np
         net = self._net
-        pending: dict = {}                 # JPEG only: latest independent frame
-        from embodied_brain_collect.recorders.ego_headband.h264_decoder import H264Decoder
-        decoders = {}
-        last_seq = {}
         while not self._stop.is_set():
             got = self._recv(0.2)
             if got is None:
@@ -341,32 +378,126 @@ class _HeadbandFeed:
                         pass
                 elif kind == "data":
                     topic = meta.get("topic")
-                    if topic in self.camera_topics and payload:
-                        if self.advertised.get(topic) == "h264/annexb":
-                            if meta.get("type") != "h264/annexb":
-                                raise ValueError("headband camera type changed")
-                            seq = meta.get("stream_seq")
-                            if type(seq) is not int or seq < 0:
-                                raise ValueError("missing H.264 stream_seq")
-                            if topic in last_seq and seq != last_seq[topic] + 1:
-                                raise ValueError("H.264 preview sequence discontinuity")
-                            last_seq[topic] = seq
-                            if topic not in decoders:
-                                decoders[topic] = H264Decoder()
-                            rgb = decoders[topic].decode(payload, meta.get("keyframe"))
-                            with self._lock:
-                                self._latest[topic] = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-                        else:
-                            pending[topic] = payload
-            # 解码放在排空之后:1080p JPEG 逐帧解(~15ms/帧)追不上
-            # 4x30fps 的入流,只解每路最新一帧才是能跟上的节奏
-            for topic, payload in pending.items():
-                img = cv2.imdecode(
-                    np.frombuffer(payload, np.uint8), cv2.IMREAD_COLOR)
+                    if topic not in self.camera_topics or not payload:
+                        continue
+                    if self.advertised.get(topic) == "h264/annexb":
+                        if meta.get("type") != "h264/annexb":
+                            self._topic_error[topic] = "相机编码类型变更"
+                            continue
+                        self._dispatch_h264(topic, meta, payload)
+                    else:
+                        # JPEG 无参考帧依赖,只留最新一帧交给解码线程
+                        self._jpeg_pending[topic] = payload
+
+    def _dispatch_h264(self, topic: str, meta: dict, payload: bytes) -> None:
+        """收包线程只做序号检查 + 入队,绝不在这里解码。"""
+        seq = meta.get("stream_seq")
+        if type(seq) is not int or seq < 0:
+            self._topic_error[topic] = "H.264 缺少 stream_seq"
+            return
+        prev = self._last_seq.get(topic)
+        keyframe = meta.get("keyframe") is True
+        if prev is not None and seq != prev + 1:
+            # 客户端消费慢时设备端会丢帧;预览允许跳帧,等下一个 IDR 重开
+            self._resync_topic(topic, f"帧序号跳变 {prev}->{seq}")
+        self._last_seq[topic] = seq
+        if topic in self._h264_resync and not keyframe:
+            return
+        q = self._h264_q.get(topic)
+        if q is None:
+            q = queue.Queue(maxsize=self.H264_QUEUE_MAX)
+            self._h264_q[topic] = q
+            t = threading.Thread(
+                target=self._h264_worker, args=(topic, q),
+                name=f"headband-check-{topic}", daemon=True)
+            self._h264_threads[topic] = t
+            t.start()
+        try:
+            q.put_nowait((payload, keyframe))
+        except queue.Full:
+            self._resync_topic(topic, "解码积压,跳到下一个 IDR")
+            if keyframe:
+                # 被挤掉的这帧本身就是重开点:清空积压后单独留下它
+                q.put_nowait((payload, keyframe))
+
+    def _resync_topic(self, topic: str, reason: str) -> None:
+        """丢光该路积压,标记等 IDR —— 只影响这一路,其余相机照常预览。"""
+        self._h264_resync.add(topic)
+        self._topic_error[topic] = reason
+        q = self._h264_q.get(topic)
+        if q is not None:
+            try:
+                while True:
+                    q.get_nowait()
+            except queue.Empty:
+                pass
+
+    def _h264_worker(self, topic: str, q: queue.Queue) -> None:
+        import cv2
+        from embodied_brain_collect.recorders.ego_headband.h264_decoder import (
+            H264Decoder)
+        decoder = None
+        last_emit = 0.0
+        interval = 1.0 / max(self.PREVIEW_FPS, 1e-6)
+        while not self._decode_stop.is_set():
+            try:
+                payload, keyframe = q.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if topic in self._h264_resync:
+                if not keyframe:
+                    continue
+                decoder = None      # 从 IDR 重建解码器
+            if decoder is None:
+                try:
+                    decoder = H264Decoder()
+                except Exception as exc:
+                    self._h264_resync.add(topic)
+                    self._topic_error[topic] = f"GPU 解码不可用 — {exc}"
+                    continue
+            try:
+                frame = decoder.decode_frame(payload, keyframe)
+            except Exception as exc:
+                decoder = None
+                self._h264_resync.add(topic)
+                self._topic_error[topic] = f"解码失败,等下一个 IDR — {exc}"
+                continue
+            self._h264_resync.discard(topic)
+            self._topic_error.pop(topic, None)
+            # 逐帧解码保证参考链完整;GPU→CPU 拷贝 + 转 BGR 按预览帧率限流
+            now = time.monotonic()
+            if now - last_emit < interval:
+                continue
+            try:
+                rgb = frame.to_ndarray(format="rgb24")
+            except Exception as exc:
+                self._topic_error[topic] = f"帧拷贝失败 — {exc}"
+                continue
+            with self._lock:
+                self._latest[topic] = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            last_emit = now
+
+    def _jpeg_worker(self) -> None:
+        import cv2
+        import numpy as np
+        while not self._decode_stop.is_set():
+            got = False
+            for topic in self.camera_topics:
+                payload = self._jpeg_pending.pop(topic, None)
+                if payload is None:
+                    continue
+                got = True
+                img = cv2.imdecode(np.frombuffer(payload, np.uint8),
+                                   cv2.IMREAD_COLOR)
                 if img is not None:
                     with self._lock:
                         self._latest[topic] = img
-            pending.clear()
+                    self._topic_error.pop(topic, None)
+            if not got:
+                time.sleep(0.01)
+
+    def error_for(self, topic: str) -> str:
+        return self._topic_error.get(topic, "")
 
     # ---- 拼屏取帧 / 关闭 ----
 
@@ -378,6 +509,7 @@ class _HeadbandFeed:
 
     def close(self) -> None:
         self._stop.set()
+        self._decode_stop.set()
         # shutdown 先唤醒阻塞接收,线程退出后才能安全复用 feed。
         sock = self._sock
         if sock is not None:
@@ -390,6 +522,17 @@ class _HeadbandFeed:
             t.join(timeout=2.0)
             if not t.is_alive():
                 self._thread = None
+        for topic, worker in list(self._h264_threads.items()):
+            worker.join(timeout=2.0)
+            if not worker.is_alive():
+                self._h264_threads.pop(topic, None)
+        jpeg = self._jpeg_thread
+        if jpeg is not None:
+            jpeg.join(timeout=2.0)
+            if not jpeg.is_alive():
+                self._jpeg_thread = None
+        # 活着的线程仍持有自己的队列,字典留给 open() 重置;这里只清待解数据
+        self._jpeg_pending.clear()
         self._close_sock()
 
     def _close_sock(self) -> None:
@@ -699,15 +842,19 @@ def show(sources: list[Source], seconds: float, cv2) -> None:
     print(f"\n拼屏显示 {n} 路(单窗口)— q / Esc 退出" +
           (f"(约 {seconds:g}s 后自动关闭)" if seconds else ""))
     t0 = time.time()
-    reported = {src.label: False for src in sources}  # 失败只在状态变化时报一次
-    last = {}                                          # label -> 最近一张成功帧
-    misses = {src.label: 0 for src in sources}         # 连续没取到新帧的次数
+    reported = {i: False for i in range(n)}   # 失败只在状态变化时报一次
+    last = {}                                 # index -> 最近一张成功帧
+    last_ok = {}                              # index -> 该帧的单调时间
+    scaled = {}                               # index -> (源帧, 缩放后帧)
+    stale_after = 1.0
     while True:
         if seconds and time.time() - t0 >= seconds:
             break
-        key = cv2.waitKey(1) & 0xFF
+        # 单次等待同时节流:不再按 150fps 反复 resize 整屏,给解码让出 CPU
+        key = cv2.waitKey(15) & 0xFF
         if key in (ord("q"), 27):
             break
+        now = time.monotonic()
         canvas[:] = 0
         for i, src in enumerate(sources):
             r, c = divmod(i, cols)
@@ -718,30 +865,37 @@ def show(sources: list[Source], seconds: float, cv2) -> None:
                 lbl = f"{lbl} [{slot}]"
             ok, img = _read(src, cv2)
             if ok:
-                last[lbl] = img
-                misses[lbl] = 0
-                reported[lbl] = False
-            else:
-                misses[lbl] = misses.get(lbl, 0) + 1  # poll 空拍不算失败
-            show_img = last.get(lbl)
-            if show_img is not None and misses[lbl] < 30:
-                h, w = show_img.shape[:2]
-                scale = min(cell_w / w, (cell_h - 26) / h)
-                tw, th = max(1, int(w * scale)), max(1, int(h * scale))
-                if (tw, th) != (w, h):
-                    show_img = cv2.resize(show_img, (tw, th))
+                last[i] = img
+                last_ok[i] = now
+                reported[i] = False
+            show_img = last.get(i)
+            if show_img is not None and now - last_ok.get(i, 0.0) < stale_after:
+                cached = scaled.get(i)
+                if cached is None or cached[0] is not show_img:
+                    h, w = show_img.shape[:2]
+                    scale = min(cell_w / w, (cell_h - 26) / h)
+                    tw, th = max(1, int(w * scale)), max(1, int(h * scale))
+                    small = (cv2.resize(show_img, (tw, th))
+                             if (tw, th) != (w, h) else show_img)
+                    cached = (show_img, small)
+                    scaled[i] = cached
+                small = cached[1]
+                th, tw = small.shape[:2]
                 ox = x0 + (cell_w - tw) // 2
                 oy = y0 + 26 + (cell_h - 26 - th) // 2
-                canvas[oy:oy + th, ox:ox + tw] = show_img
+                canvas[oy:oy + th, ox:ox + tw] = small
                 fps = f" @{src.fps:.0f}fps" if src.fps and src.fps > 0 else ""
                 tag, color = f"{lbl}  {src.res[0]}x{src.res[1]}{fps}", \
                     (255, 255, 255)
             else:
-                if not reported.get(lbl, False):
-                    error = (src.extra["feed"].error
-                             if src.kind == "headband" else "")
+                if not reported.get(i, False):
+                    error = ""
+                    if src.kind == "headband":
+                        feed = src.extra["feed"]
+                        error = (feed.error_for(src.extra["topic"])
+                                 or feed.error)
                     print(f"  {lbl}: {error or '读帧失败,持续重试 ...'}")
-                    reported[lbl] = True
+                    reported[i] = True
                 cv2.putText(canvas, f"{lbl}  no frame",
                             (x0 + 16, y0 + cell_h // 2),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
@@ -753,7 +907,6 @@ def show(sources: list[Source], seconds: float, cv2) -> None:
             cv2.rectangle(canvas, (x0, y0), (x0 + cell_w - 1, y0 + cell_h - 1),
                           (70, 70, 78), 1)
         cv2.imshow("check_cameras  [q/Esc quit]", canvas)
-        time.sleep(0.005)
     cv2.destroyAllWindows()
 
 

@@ -30,7 +30,12 @@ class H264Decoder:
         self.codec.thread_type = "SLICE"
         self.started = False
 
-    def decode(self, payload, keyframe):
+    def decode_frame(self, payload, keyframe):
+        """Decode one access unit and return the AVFrame (no CPU copy).
+
+        Preview-only callers use this to skip the expensive GPU→CPU
+        conversion on frames they will not display.
+        """
         if not payload or not payload.startswith((b"\x00\x00\x01", b"\x00\x00\x00\x01")):
             raise ValueError("expected nonempty Annex-B H.264 access unit")
         nals = {part[0] & 31 for part in re.split(b"\x00\x00\x00?\x01", payload) if part}
@@ -44,4 +49,7 @@ class H264Decoder:
         if len(frames) != 1 or frames[0].pict_type == self.av.video.frame.PictureType.B:
             raise ValueError("expected one immediate baseline frame per H.264 packet")
         self.started = True
-        return frames[0].to_ndarray(format="rgb24")
+        return frames[0]
+
+    def decode(self, payload, keyframe):
+        return self.decode_frame(payload, keyframe).to_ndarray(format="rgb24")
