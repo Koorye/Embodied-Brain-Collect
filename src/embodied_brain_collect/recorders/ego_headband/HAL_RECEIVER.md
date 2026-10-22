@@ -7,13 +7,21 @@ TCP framing、标定握手、音频/IMU 与输出文件名保持不变。
 
 四路 H.264 原始包通过 PyAV add_mux_stream 直接封装 MP4，不创建编码器或解码器。
 压缩图像字节不变；输出编码为 H.264（原来为 HEVC），每包对应一帧。
-保存原始采集时间戳到 NPZ；MP4 的 PTS/DTS 为相对首个保存帧的采集时间，精度为微秒。
-保留真实时间间隔，不补帧、不生成 CFR 时间戳。仅支持 camd baseline、无 B 帧。
+保存原始采集时间戳到 NPZ；MP4 写**名义 CFR 时间戳**（`pts = i × 90000/cam_fps`，
+时基 1/90000），容器时长 = 帧数/cam_fps。每帧的真实采集时刻只在 NPZ 的
+`{name}_timestamps` 里——丢帧在 MP4 中表现为时长变短，不再是时间轴上的空洞。
+录制端仍校验采集时间戳严格递增（乱序即数据损坏）。要求 `cam_fps` 为整数且能整除
+90000（默认 30）。
+
+CFR 容器的目的：让打包端 `pack_daily._smart_cut` 对头环也走"头段边角重编码 +
+整 GOP 逐比特流拷贝"（实测 1243 帧截段 1.3s，全量重编码 5.5s），输出无二次编码
+损失，mp4 tag 为 `avc3`（允许带内参数集）。历史 VFR 直存文件不满足该契约，
+自动回退到按帧序号全量重编码，结果仍然正确。
 
 正式录制从 commit 后每路首个 IDR + SPS/PPS 开始，丢弃之前依赖预热 GOP 的 P 帧；
 当前 GOP 约 1 秒，因此各路开头最多可能等待约 1 秒，必须按 NPZ 时间戳对齐。
 等待超过 5 秒仍无 IDR 或停止时没有可独立解码的视频会报错。
-NPZ 增加 video_storage=h264_passthrough、各路 video_start_ns、
+NPZ 增加 video_storage=h264_passthrough_cfr、各路 video_start_ns、
 h264_start_skipped_frames 和 h264_start_wait_ns。
 序号缺口、时间戳倒退、SPS 改变、写盘失败和队列溢出均停止并报告；停止时排空包队列。
 
@@ -33,8 +41,9 @@ stay collect 环境使用 PyAV 18.1.0、RTX 3050。直接封装需要 add_mux_st
 
 每次会话仍需三个标定文件的大小、SHA-256、落盘和 ACK 校验。
 标定位于 <session>/ego_headband/calibrations/；源头环标定不变。
-录制改为 H.264 后，pack_daily 的 HEVC 专用快速截段不适用，会走其既有重新编码回退路径。
-本次未修改打包策略或其他设备。
+录制改为名义 CFR 的 H.264 后，`pack_daily._smart_cut` 同时支持 h264（头段用
+libx264 并按源码流 profile 重编码，mp4 tag `avc3`），头环打包不再整段重编码；
+不满足契约的历史文件仍走按帧序号的全量重编码回退。
 
 ```powershell
 $env:PYTHONPATH='src'

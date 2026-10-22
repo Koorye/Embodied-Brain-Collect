@@ -115,10 +115,14 @@ class TestHalH264(unittest.TestCase):
                 w.write(payload, origin + i * 33333333, key)
             w.close()
             with av.open(str(path)) as c:
-                self.assertEqual(c.streams.video[0].codec_context.name, 'h264')
+                stream = c.streams.video[0]
+                self.assertEqual(stream.codec_context.name, 'h264')
+                # 名义 CFR 时基:打包端据此走整 GOP 流拷贝
+                self.assertEqual(stream.time_base, Fraction(1, 90000))
                 demuxed = [p for p in c.demux(video=0) if p.size]
                 self.assertEqual(len(demuxed), len(data))
                 for i, p in enumerate(demuxed):
+                    self.assertEqual(p.pts, i * 3000)
                     self.assertAlmostEqual(float(p.pts * p.time_base), i / 30, places=5)
                     # MP4 rewrites start codes into lengths, but slice bytes are unchanged.
                     from embodied_brain_collect.recorders.ego_headband.h264_mux_writer import nals
@@ -155,7 +159,7 @@ class TestHalH264(unittest.TestCase):
             with np.load(out/'ego_headband.npz') as z:
                 np.testing.assert_allclose(z['left_timestamps'],1+np.arange(8,12)*33333333/1e9)
                 self.assertEqual(int(z['left_h264_start_skipped_frames']),3)
-                self.assertEqual(str(z['video_storage']),'h264_passthrough')
+                self.assertEqual(str(z['video_storage']),'h264_passthrough_cfr')
             with av.open(str(out/'left.mp4')) as c:
                 frames=list(c.decode(video=0)); self.assertEqual(len(frames),4)
                 self.assertLess(abs(float(frames[0].to_ndarray(format='rgb24').mean())-120),6)

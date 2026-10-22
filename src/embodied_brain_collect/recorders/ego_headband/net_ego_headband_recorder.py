@@ -427,7 +427,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 kind = self._topics[topic]
                 if kind == "h264/annexb":
                     H264MuxWriter.check_available()
-                    self._static["video_storage"] = np.asarray("h264_passthrough")
+                    self._static["video_storage"] = np.asarray("h264_passthrough_cfr")
                     self._h264_cameras.add(i)
                 elif kind != "sensor_msgs/CompressedImage":
                     raise ValueError(f"unsupported camera type: {kind}")

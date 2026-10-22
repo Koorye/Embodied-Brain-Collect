@@ -1,4 +1,11 @@
-"""Pure Annex-B -> MP4 muxing; no decoder or encoder is created."""
+"""Pure Annex-B -> MP4 muxing; no decoder or encoder is created.
+
+The container carries nominal CFR timestamps (``pts = i * 90000/fps``) so the
+downstream GOP-level stream-copy cut applies; the authoritative per-frame
+capture time lives in the NPZ ``{name}_timestamps``.  Capture order is still
+validated — a non-increasing capture timestamp means the stream itself is
+corrupt, even though it no longer shapes the container timeline.
+"""
 from fractions import Fraction
 import re
 
@@ -90,13 +97,18 @@ class H264MuxWriter:
             raise ValueError('recording must start with IDR + SPS/PPS')
         self.width, self.height = dimensions(sps)
         self.sps = sps
-        self.time_base = Fraction(1, 1000000)
-        self.origin_ns = None
-        self.last_pts = None
-        self.duration = round(1000000 / fps)
+        fps_i = int(fps)
+        if fps_i <= 0 or float(fps_i) != float(fps) or 90000 % fps_i:
+            raise ValueError('H.264 CFR mux requires an integer fps dividing 90000 '
+                             f'(e.g. 30); got cam_fps={fps}')
+        self.time_base = Fraction(1, 90000)
+        self.ticks = 90000 // fps_i
+        self.index = 0
+        self.last_stamp_ns = None
+        self.duration = self.ticks
         self.container = self.av.open(str(path), 'w', format='mp4')
         try:
-            self.stream = self.container.add_mux_stream('h264', rate=Fraction(str(fps)),
+            self.stream = self.container.add_mux_stream('h264', rate=Fraction(str(fps_i)),
                 width=self.width, height=self.height, time_base=self.time_base)
         except BaseException:
             self.container.close()
@@ -107,13 +119,14 @@ class H264MuxWriter:
         for p in parts:
             if p[0] & 31 == 7 and p != self.sps:
                 raise ValueError('SPS changed during recording')
-        if self.origin_ns is None:
+        if self.index == 0:
             if not keyframe:
                 raise ValueError('first saved packet must be IDR')
-            self.origin_ns = stamp_ns
-        pts = (stamp_ns - self.origin_ns + 500) // 1000
-        if self.last_pts is not None and pts <= self.last_pts:
+        if (self.last_stamp_ns is not None
+                and int(stamp_ns) <= self.last_stamp_ns):
             raise ValueError('non-increasing H.264 capture timestamp')
+        self.last_stamp_ns = int(stamp_ns)
+        pts = self.index * self.ticks
         packet = self.av.Packet(payload)
         packet.stream = self.stream
         packet.time_base = self.time_base
@@ -121,7 +134,7 @@ class H264MuxWriter:
         packet.duration = self.duration
         packet.is_keyframe = keyframe
         self.container.mux(packet)
-        self.last_pts = pts
+        self.index += 1
 
     def close(self):
         if self.container is not None:

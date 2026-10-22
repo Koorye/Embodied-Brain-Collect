@@ -994,11 +994,11 @@ def _run_ffmpeg(args: list[str]) -> None:
 
 
 def _probe_stream(mp4: Path) -> dict:
-    """视频流容器元数据:codec、重排帧数、帧率、时基、像素格式。"""
+    """视频流容器元数据:codec、重排帧数、帧率、时基、像素格式、profile。"""
     p = subprocess.run(
         [media_tool("ffprobe"), "-v", "error", "-select_streams", "v:0",
          "-show_entries",
-         "stream=codec_name,has_b_frames,r_frame_rate,time_base,pix_fmt",
+         "stream=codec_name,has_b_frames,r_frame_rate,time_base,pix_fmt,profile",
          "-of", "json", str(mp4)],
         capture_output=True, text=True, check=True)
     st = (json.loads(p.stdout).get("streams") or [{}])[0]
@@ -1031,21 +1031,22 @@ def _packet_pts(mp4: Path) -> list[tuple[int, bool]]:
 def _smart_cut(src_mp4: Path, out_mp4: Path, i0: int, n: int, fps: int) -> None:
     """智能截段:头部边角重编码 + 其余整 GOP 逐比特流拷贝。
 
-    录制端契约(FFmpegWriter/FFmpegJpegWriter:CFR、bframes=0、
-    keyint=fps、timescale 90000)成立时,窗口 [i0, i1] 的截段不必整段
-    重编码:
+    录制端契约(CFR、bframes=0、keyint=fps、timescale 90000)成立时,
+    窗口 [i0, i1] 的截段不必整段重编码。契约由两类录制满足:HEVC 相机
+    (FFmpegWriter/FFmpegJpegWriter 重编码)与头环 H.264 直存
+    (H264MuxWriter 写名义 CFR 时间戳,采集真实时间只在 NPZ)。
 
-    - 头段 [i0, k):k 为 i0 起第一个关键帧,不足一个 GOP,libx265 按
-      录制端同款参数重编码(bframes=0);
+    - 头段 [i0, k):k 为 i0 起第一个关键帧,不足一个 GOP,按源码流同族
+      编码器(hevc→libx265 / h264→libx264)重编码,禁 B 帧;
     - 中尾段 [k, i1]:自关键帧起的整 GOP 流拷贝,尾部按包数精确截断
       (闭合 GOP + 无 B 帧,截断前缀自洽可解码)。
 
     两段经 MPEG-TS 中转拼接:TS 在关键帧前重发带内参数集,最终 mp4 以
-    hev1 tag 落盘(允许带内参数集)—— 头段重编码与源码流参数集不同
-    (编码器版本差异)也能各自可解码。输出与全量重编码同契约:CFR、
-    PTS = i/fps、无 B 帧,中段无二次编码损失,编码量从整段降到一个
-    GOP 以内。任何前提不成立或校验不过都抛异常,由调用方回退全量
-    重编码。
+    hev1(hevc)/avc3(h264) tag 落盘(允许带内参数集)—— 头段重编码与源
+    码流参数集不同(编码器版本差异)也能各自可解码。输出与全量重编码同
+    契约:CFR、PTS = i/fps、无 B 帧,中段无二次编码损失,编码量从整段降到
+    一个 GOP 以内。任何前提不成立或校验不过都抛异常,由调用方回退全量
+    重编码(按帧序号截段,对 VFR 历史数据仍然正确)。
     """
     st = _probe_stream(src_mp4)
     tb_num, tb_den = st["tb"]
@@ -1053,10 +1054,22 @@ def _smart_cut(src_mp4: Path, out_mp4: Path, i0: int, n: int, fps: int) -> None:
         n_bf = int(st.get("has_b_frames"))
     except (TypeError, ValueError):
         n_bf = -1
-    if (st.get("codec_name") != "hevc" or n_bf != 0
+    if (st.get("codec_name") not in ("hevc", "h264") or n_bf != 0
             or st["fps"] != float(fps) or not tb_den
             or tb_den % (tb_num * fps)):
-        raise RuntimeError("容器不满足录制端契约(非 hevc/有 B 帧/非整帧时基)")
+        raise RuntimeError("容器不满足录制端契约(非 hevc/h264、有 B 帧或非整帧时基)")
+    # 头段编码器与尾段拷贝的码流必须同族;mp4 tag 允许带内参数集
+    if st.get("codec_name") == "hevc":
+        head_codec = ["-c:v", "libx265", "-x265-params", "bframes=0:no-info=1"]
+        tag = "hev1"
+    else:
+        head_codec = ["-c:v", "libx264", "-x264-params", "bframes=0:info=0"]
+        tag = "avc3"
+        # 头段沿用源码流 profile,避免与拷贝段的高/基线混用
+        prof = str(st.get("profile") or "").strip().lower()
+        prof = {"constrained baseline": "baseline"}.get(prof, prof.split(" (")[0])
+        if prof in ("baseline", "main", "high"):
+            head_codec += ["-profile:v", prof]
     ticks = tb_den // (tb_num * fps)        # 每帧 pts 步进,90000/30 = 3000
     pkts = _packet_pts(src_mp4)
     i1 = i0 + n - 1
@@ -1080,8 +1093,8 @@ def _smart_cut(src_mp4: Path, out_mp4: Path, i0: int, n: int, fps: int) -> None:
             _run_ffmpeg([
                 "-ss", f"{i0 / fps:.6f}", "-i", str(src_mp4),
                 "-frames:v", str(k - i0),
-                "-c:v", "libx265", "-crf", "23", "-preset", "medium",
-                "-x265-params", "bframes=0:no-info=1",
+                *head_codec,
+                "-crf", "23", "-preset", "medium",
                 "-pix_fmt", str(st["pix_fmt"]),
                 "-r", str(fps), "-fps_mode", "cfr",
                 "-g", str(fps), "-keyint_min", str(fps),
@@ -1097,7 +1110,7 @@ def _smart_cut(src_mp4: Path, out_mp4: Path, i0: int, n: int, fps: int) -> None:
                     for p in (head, rest) if p.exists()),
             encoding="utf-8")
         _run_ffmpeg(["-f", "concat", "-safe", "0", "-i", str(lst),
-                     "-map", "0:v:0", "-c", "copy", "-tag:v", "hev1",
+                     "-map", "0:v:0", "-c", "copy", "-tag:v", tag,
                      "-video_track_timescale", str(tb_den), str(out_mp4)])
         # 校验与全量重编码同口径:帧数精确、pts 严格 CFR 整数网格。
         # 解码自验聚焦拼接风险区(解码错误不改 ffmpeg 返回码,以进度行
