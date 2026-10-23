@@ -73,6 +73,11 @@ _DRAIN_MAX = 64              # bounded burst drain per poll
 # 两级缓冲都按"至少吸掉亚秒级突发"取值,突发过后照常追平。
 _SOCK_RCVBUF = 8 * 1024 * 1024    # 8MB ≈ 本设备满速流(4 cam + 2 imu)~0.6s
 _DECODE_QUEUE_MAX = 64            # 每路相机积压上限,64 帧 ≈ 30fps 下 ~2s
+# Per-camera compressed pre-roll limits. Never evict a reference packet: a
+# stream exceeding these limits must fail explicitly rather than save a broken GOP.
+_H264_GOP_MAX_BYTES = 64 * 1024 * 1024
+_H264_GOP_MAX_PACKETS = 600
+_H264_GOP_MAX_NS = 10_000_000_000
 
 
 # Precise wall clock the device syncs against (matches the reference client):
@@ -302,7 +307,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                 self._drain_discard()
 
     def _drain_discard(self) -> None:
-        """Discard pre-roll output while preserving the H.264 decoder state."""
+        """Discard other pre-roll; retain compressed H.264 GOPs for commit."""
         while True:
             try:
                 frame = self._take_frame()
@@ -317,7 +322,7 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
             if kind == "data":
                 self._preroll += 1
                 # H.264 P frames depend on the IDR received during open.
-                # Keep decoder state alive, but never save pre-roll.
+                # Cache compressed dependencies; task packaging trims pre-roll.
                 if self._cam_index.get(meta.get("topic")) in self._h264_cameras:
                     try:
                         self._on_h264_data(meta, payload, record=False)
@@ -663,52 +668,84 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
             except Exception as exc:
                 self._static[f"{key}_preview_error"] = np.asarray(str(exc))
                 self._log(f"[{self.name}] {key} preview disabled: {exc}", level="WARNING")
-        skipped = 0
-        first_record_ns = None
+        # Only this worker owns its GOP and writer. A FIFO commit marker is
+        # inserted AFTER the common timestamp buffers have been cleared; queued
+        # precommit packets cannot race that clear or be written twice.
+        gop = []
+        gop_bytes = 0
+        recording = False
+        last_stamp_ns = None
+
+        def write_packet(packet):
+            if not self._save_enabled:
+                return
+            payload, stamp_ns, keyframe = packet
+            writer = self._video_writers.get(key)
+            if writer is None:
+                out = Path(self.config.session_dir) / self.output_dir
+                out.mkdir(parents=True, exist_ok=True)
+                path = out / f"{key}.mp4"
+                writer = H264MuxWriter(path, self._write_fps(), payload)
+                self._video_writers[key] = writer
+                self._video_paths[key] = path
+                self._last_shapes[key] = (writer.height, writer.width, 3)
+                self._static[f"{key}_video_start_ns"] = np.asarray(stamp_ns, dtype=np.int64)
+                self._static[f"{key}_h264_start_skipped_frames"] = np.asarray(0)
+                self._static[f"{key}_h264_start_wait_ns"] = np.asarray(0, dtype=np.int64)
+                self._log(f"[{self.name}] {key}: H.264 direct MP4 with GOP pre-roll")
+            writer.write(payload, stamp_ns, keyframe)
+            self._acc_ts(key, stamp_ns / 1e9)
+            self._written[key] = self._written.get(key, 0) + 1
+            self._frames_enqueued += 1
+
         while True:
             try:
-                payload, stamp_ns, record, keyframe = q.get(timeout=0.1)
+                item = q.get(timeout=0.1)
             except queue.Empty:
                 if self._decode_stop.is_set():
                     return
                 continue
             try:
+                if item is None:  # commit, including commit followed immediately by stop
+                    for packet in gop:
+                        write_packet(packet)
+                    gop.clear()
+                    gop_bytes = 0
+                    recording = True
+                    continue
+                payload, stamp_ns, record, keyframe = item
                 parts = nals(payload, keyframe)
+                if last_stamp_ns is not None and stamp_ns <= last_stamp_ns:
+                    raise ValueError("non-increasing H.264 capture timestamp")
+                last_stamp_ns = stamp_ns
                 if i not in self._h264_ready:
                     if not keyframe or not {7, 8} <= {p[0] & 31 for p in parts}:
                         raise ValueError("subscription must start with IDR + SPS/PPS")
                     self._h264_ready.add(i)
                 self._cam_count[i] = self._cam_count.get(i, 0) + 1
-                if not record:
+                packet = (payload, stamp_ns, keyframe)
+                if recording or record:
+                    # Standalone recording has no commit marker. Keep this
+                    # fallback for direct callers, flushing dependencies once.
+                    for cached in gop:
+                        write_packet(cached)
+                    gop.clear()
+                    gop_bytes = 0
+                    recording = True
+                    write_packet(packet)
+                else:
                     self._frames_precommit += 1
-                elif self._save_enabled:
-                    # Reject capture times preceding commit, even if received later.
-                    cutoff = int((getattr(self, "_loop_t0", 0) or 0) * 1e9) if self._launch_mode else 0
-                    if stamp_ns >= cutoff:
-                        if first_record_ns is None:
-                            first_record_ns = stamp_ns
-                        writer = self._video_writers.get(key)
-                        if writer is None and not keyframe:
-                            skipped += 1
-                            self._static[f"{key}_h264_start_skipped_frames"] = np.asarray(skipped)
-                            if stamp_ns - first_record_ns > 5_000_000_000:
-                                raise RuntimeError("no recording-start IDR within 5 seconds")
-                        else:
-                            if writer is None:
-                                out = Path(self.config.session_dir) / self.output_dir
-                                out.mkdir(parents=True, exist_ok=True)
-                                path = out / f"{key}.mp4"
-                                writer = H264MuxWriter(path, self._write_fps(), payload)
-                                self._video_writers[key] = writer
-                                self._video_paths[key] = path
-                                self._last_shapes[key] = (writer.height, writer.width, 3)
-                                self._static[f"{key}_video_start_ns"] = np.asarray(stamp_ns, dtype=np.int64)
-                                self._static[f"{key}_h264_start_wait_ns"] = np.asarray(stamp_ns - first_record_ns, dtype=np.int64)
-                                self._log(f"[{self.name}] {key}: H.264 direct MP4 (no transcode), skipped {skipped} leading P frames")
-                            writer.write(payload, stamp_ns, keyframe)
-                            self._acc_ts(key, stamp_ns / 1e9)
-                            self._written[key] = self._written.get(key, 0) + 1
-                            self._frames_enqueued += 1
+                    if keyframe:
+                        if not {7, 8} <= {p[0] & 31 for p in parts}:
+                            raise ValueError("pre-roll IDR requires SPS/PPS")
+                        gop.clear()
+                        gop_bytes = 0
+                    gop.append(packet)
+                    gop_bytes += len(payload)
+                    if (gop_bytes > _H264_GOP_MAX_BYTES
+                            or len(gop) > _H264_GOP_MAX_PACKETS
+                            or stamp_ns - gop[0][1] > _H264_GOP_MAX_NS):
+                        raise RuntimeError("H.264 pre-roll GOP exceeds cache limit")
             except Exception as exc:
                 self._end_stream(f"H.264 cam{i} mux failed: {exc}")
                 return
@@ -721,6 +758,20 @@ class NetEgoHeadbandRecorder(BaseEgoHeadbandRecorder):
                     decoder = None
                     self._static[f"{key}_preview_error"] = np.asarray(str(exc))
                     self._log(f"[{self.name}] {key} GPU preview disabled: {exc}", level="WARNING")
+
+    def _discard_preface(self):
+        # _maybe_commit runs on the socket producer thread, after keep-alive
+        # handoff. Workers only cache before this marker, so the superclass
+        # clear cannot erase timestamps belonging to saved H.264 packets.
+        super()._discard_preface()
+        for i in self._h264_cameras:
+            q = self._decode_queues.get(i)
+            if q is not None:
+                try:
+                    q.put_nowait(None)
+                except queue.Full as exc:
+                    self._end_stream("H.264 packet queue overflow at commit")
+                    raise RuntimeError(self._ended_reason) from exc
 
     def _ready_to_commit(self):
         if self._ended:

@@ -146,8 +146,9 @@ class TestHalH264(unittest.TestCase):
                 deadline=time.monotonic()+3
                 while not r._ready_to_commit() and time.monotonic()<deadline: time.sleep(.01)
                 self.assertTrue(r._ready_to_commit())
-                r._committed=True
-                # Commit at P frame 5: skip 5,6,7; next independent IDR is frame 8.
+                r.request_commit()
+                self.assertTrue(r._maybe_commit())
+                # Commit at P frame 5: retain IDR 4 and every subsequent P frame.
                 for i,(payload,key) in enumerate(data[5:],5):
                     r._on_h264_data(metadata(topic,i,key),payload,record=True)
                 r._stop_camera_decoders(); r._save()
@@ -157,12 +158,131 @@ class TestHalH264(unittest.TestCase):
             self.assertFalse(r._ended,r._ended_reason)
             out=Path(tmp)/'ego_headband'
             with np.load(out/'ego_headband.npz') as z:
-                np.testing.assert_allclose(z['left_timestamps'],1+np.arange(8,12)*33333333/1e9)
-                self.assertEqual(int(z['left_h264_start_skipped_frames']),3)
+                np.testing.assert_allclose(z['left_timestamps'],1+np.arange(4,12)*33333333/1e9)
+                self.assertEqual(int(z['left_h264_start_skipped_frames']),0)
+                self.assertEqual(int(z['left_video_start_ns']), metadata(topic,4,True)['header']['stamp_ns'])
                 self.assertEqual(str(z['video_storage']),'h264_passthrough_cfr')
             with av.open(str(out/'left.mp4')) as c:
-                frames=list(c.decode(video=0)); self.assertEqual(len(frames),4)
-                self.assertLess(abs(float(frames[0].to_ndarray(format='rgb24').mean())-120),6)
+                frames=list(c.decode(video=0)); self.assertEqual(len(frames),8)
+                for i, frame in enumerate(frames,4):
+                    self.assertLess(abs(float(frame.to_ndarray(format='rgb24').mean())-i*15),6)
+
+    def test_task_window_cuts_cached_dependencies_from_real_recording(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            'pack_daily_gop_test', Path(__file__).resolve().parents[2]/'scripts'/'pack_daily.py')
+        pack = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(pack)
+        with tempfile.TemporaryDirectory() as tmp:
+            r, topic = recorder(tmp)
+            r._launch_mode = True
+            data = packets(12)
+            try:
+                for seq, (payload, key) in enumerate(data[:5]):
+                    r._on_h264_data(metadata(topic, seq, key), payload, record=False)
+                r.request_commit()
+                r._maybe_commit()
+                for seq, (payload, key) in enumerate(data[5:], 5):
+                    r._on_data(metadata(topic, seq, key), payload)
+                r._save()
+                self.assertFalse(r._ended, r._ended_reason)
+                out = Path(tmp)/'ego_headband'
+                with np.load(out/'ego_headband.npz') as z:
+                    ts = z['left_timestamps']
+                np.testing.assert_allclose(ts, 1+np.arange(4,12)*33333333/1e9)
+                trimmed = Path(tmp)/'task.mp4'
+                count = pack.cut_video_aligned(out/'left.mp4', trimmed, ts,
+                                               (ts[1], ts[6]), ts[1], 'left')
+                self.assertEqual(count, 6)
+                with av.open(str(trimmed)) as c:
+                    frames = list(c.decode(video=0))
+                self.assertEqual(len(frames), 6)
+                for seq, frame in enumerate(frames, 5):
+                    self.assertLess(abs(float(frame.to_ndarray(format='rgb24').mean())-seq*15),6)
+            finally:
+                r._stop_camera_decoders()
+                from loguru import logger
+                if r._log_sink_id is not None:
+                    logger.remove(r._log_sink_id)
+                    r._log_sink_id = None
+
+    def test_commit_queued_preroll_then_immediate_stop(self):
+        # Hold workers until AFTER commit clears the timestamp buffers. Both
+        # cameras have queued precommit packets, and no postcommit packet arrives.
+        with tempfile.TemporaryDirectory() as tmp:
+            r, topic = recorder(tmp)
+            r._launch_mode = True
+            other = r.config.camera_topics[1]
+            r._cam_index[other] = 1
+            r._h264_cameras.add(1)
+            data = packets(7)
+            for i in (0, 1):
+                q = queue.Queue(maxsize=64)
+                r._decode_queues[i] = q
+                for seq, (payload, key) in enumerate(data):
+                    r._on_h264_data(metadata(topic if i == 0 else other, seq, key),
+                                    payload, record=False)
+            r._acc_ts('left', -123.0)  # must be cleared before cached GOP writes
+            r.request_commit()
+            self.assertTrue(r._maybe_commit())
+            self.assertFalse(r._maybe_commit())  # no duplicate commit marker
+            r.stop_event.set()
+            r._decode_stop.set()
+            for i, q in r._decode_queues.items():
+                worker = threading.Thread(target=r._decode_h264_loop, args=(i, q))
+                r._decode_threads[i] = worker
+                worker.start()
+            try:
+                r._save()
+                self.assertFalse(r._ended, r._ended_reason)
+                with np.load(Path(tmp)/'ego_headband'/'ego_headband.npz') as z:
+                    for key in ('left', 'right'):
+                        np.testing.assert_allclose(z[f'{key}_timestamps'],
+                                                   1+np.arange(4,7)*33333333/1e9)
+                        with av.open(str(Path(tmp)/'ego_headband'/f'{key}.mp4')) as c:
+                            frames = list(c.decode(video=0))
+                        self.assertEqual(len(frames), 3)
+                        self.assertLess(abs(float(frames[0].to_ndarray(format='rgb24').mean())-60),6)
+            finally:
+                from loguru import logger
+                if r._log_sink_id is not None:
+                    logger.remove(r._log_sink_id)
+                    r._log_sink_id = None
+
+    def test_preroll_limits_stop_without_evicting_references(self):
+        module = 'embodied_brain_collect.recorders.ego_headband.net_ego_headband_recorder'
+        for limit, value in (('_H264_GOP_MAX_PACKETS', 2),
+                             ('_H264_GOP_MAX_BYTES', 1),
+                             ('_H264_GOP_MAX_NS', 1)):
+            with self.subTest(limit=limit), patch(f'{module}.{limit}', value):
+                r, topic = recorder()
+                for seq, (payload, key) in enumerate(packets(3)):
+                    r._on_h264_data(metadata(topic, seq, key), payload, record=False)
+                r._stop_camera_decoders()
+                self.assertTrue(r._ended)
+                self.assertIn('GOP exceeds cache limit', r._ended_reason)
+                self.assertFalse(r._written)
+
+    def test_commit_queue_overflow_keeps_existing_packet(self):
+        r, _ = recorder()
+        q = queue.Queue(maxsize=1)
+        q.put('original')
+        r._decode_queues[0] = q
+        r.request_commit()
+        with self.assertRaisesRegex(RuntimeError, 'overflow at commit'):
+            r._maybe_commit()
+        self.assertEqual(q.get_nowait(), 'original')
+        self.assertTrue(r._ended)
+
+    def test_preroll_rejects_non_monotonic_timestamp(self):
+        r, topic = recorder()
+        for seq, (payload, key) in enumerate(packets(2)):
+            meta = metadata(topic, seq, key)
+            meta['header']['stamp_ns'] = 1000000000
+            r._on_h264_data(meta, payload, record=False)
+        r._stop_camera_decoders()
+        self.assertTrue(r._ended)
+        self.assertIn('non-increasing', r._ended_reason)
 
     def test_preview_failure_does_not_stop_mux(self):
         with tempfile.TemporaryDirectory() as tmp:
